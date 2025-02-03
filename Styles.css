@@ -1,252 +1,280 @@
-/* General Reset */
+/* Reset some default styles */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
-/* Body */
+/* Basic font and background styles */
 body {
-    font-family: Arial, sans-serif;
-    line-height: 1.6;
-    background-color: #f4f4f4;
+    font-family: 'Arial', sans-serif;
+    background-color: #f9f9f9;
     color: #333;
+    line-height: 1.6;
 }
 
-/* Header */
+h1, h2, h3 {
+    color: #2c3e50;
+}
+
+/* Header styles */
 header {
-    background-color: #2a76d2;
+    background-color: #3498db;
     color: white;
+    padding: 2rem 0;
     text-align: center;
-    padding: 50px 20px;
 }
 
 header h1 {
-    font-size: 2.5em;
-    margin-bottom: 10px;
+    font-size: 2.5rem;
 }
 
 header p {
-    font-size: 1.2em;
-    max-width: 800px;
-    margin: 0 auto;
+    font-size: 1.2rem;
+    margin-top: 0.5rem;
 }
 
 /* Section Styling */
 section {
-    padding: 40px 20px;
-    margin: 20px 0;
-}
-
-section h2 {
-    font-size: 2em;
-    color: #2a76d2;
-    text-align: center;
-    margin-bottom: 20px;
-}
-
-section p {
-    font-size: 1.1em;
-    text-align: center;
-    margin-bottom: 20px;
-}
-
-ul {
-    list-style: none;
-    padding: 0;
+    padding: 3rem 1.5rem;
     text-align: center;
 }
 
-ul li {
-    font-size: 1.1em;
-    margin: 10px 0;
+h2 {
+    font-size: 2rem;
+    margin-bottom: 1.5rem;
 }
 
-/* Services Section */
-#services .service {
-    margin: 20px 0;
-    padding: 15px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
+/* Service Section */
+#services {
+    background-color: #ecf0f1;
+}
+
+.service {
+    margin: 1.5rem 0;
+}
+
+.service h3 {
+    font-size: 1.8rem;
+    color: #3498db;
+    margin-bottom: 0.5rem;
+}
+
+.service p {
+    font-size: 1.1rem;
+    color: #7f8c8d;
+}
+
+/* Why Choose Us Section */
+#why-choose-us {
     background-color: #ffffff;
 }
 
-#services h3 {
-    color: #2a76d2;
-    font-size: 1.8em;
-    margin-bottom: 10px;
+#why-choose-us ul {
+    list-style-type: none;
 }
 
-#services p {
-    font-size: 1.1em;
-    color: #555;
+#why-choose-us li {
+    margin: 1.5rem 0;
+    font-size: 1.2rem;
+    color: #7f8c8d;
 }
 
-/* Testimonials */
-#testimonials blockquote {
-    background-color: #fff;
-    border-left: 4px solid #2a76d2;
-    padding: 15px;
-    margin: 20px 0;
-    font-style: italic;
-    font-size: 1.1em;
-}
-
-#testimonials footer {
-    font-size: 0.9em;
-    font-weight: bold;
-    color: #333;
-    margin-top: 10px;
-}
-
-/* Special Offers */
-#special-offers p {
-    background-color: #eaf2ff;
-    padding: 15px;
-    border-radius: 8px;
-    font-size: 1.1em;
-    text-align: center;
-}
-
-#special-offers strong {
-    font-size: 1.3em;
-    color: #2a76d2;
-}
-
-/* Button Styling */
-button {
-    background-color: #2a76d2;
-    color: white;
-    font-size: 1.2em;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-}
-
-button:hover {
-    background-color: #1c5aa0;
+#why-choose-us li strong {
+    color: #3498db;
 }
 
 /* Gallery Section */
+#gallery {
+    background-color: #f9f9f9;
+}
+
 #gallery .gallery-images {
-    display: flex;
-    justify-content: center;
-    gap: 15px;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
 }
 
 #gallery .gallery-images img {
     width: 100%;
-    max-width: 300px;
     height: auto;
     border-radius: 8px;
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-/* Contact and Booking */
-#contact, #booking {
+/* Testimonials Section */
+#testimonials {
     background-color: #ffffff;
-    text-align: center;
-    padding: 40px 20px;
-    border-radius: 8px;
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    font-style: italic;
 }
 
-#contact p, #booking p {
-    font-size: 1.1em;
-    margin-bottom: 20px;
+#testimonials blockquote {
+    margin: 2rem auto;
+    padding: 1rem 2rem;
+    border-left: 5px solid #3498db;
+    font-size: 1.2rem;
+    color: #7f8c8d;
 }
 
-#contact button, #booking button {
-    font-size: 1.2em;
-    margin-top: 10px;
+#testimonials footer {
+    font-size: 1rem;
+    color: #3498db;
+    margin-top: 1rem;
+}
+
+/* Special Offers Section */
+#special-offers {
+    background-color: #ecf0f1;
+}
+
+#special-offers p {
+    font-size: 1.2rem;
+    color: #7f8c8d;
+}
+
+#special-offers strong {
+    font-size: 1.5rem;
+    color: #3498db;
+}
+
+/* Contact Section */
+#contact {
+    background-color: #ffffff;
+}
+
+button {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    font-size: 1.2rem;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #2980b9;
+}
+
+#contact p {
+    font-size: 1.2rem;
+    color: #7f8c8d;
 }
 
 #contact button {
-    margin-bottom: 20px;
+    margin-top: 1.5rem;
+}
+
+/* Service Areas */
+#service-areas {
+    background-color: #f9f9f9;
+}
+
+#service-areas ul {
+    list-style-type: none;
+    font-size: 1.2rem;
+    color: #7f8c8d;
+}
+
+#service-areas li {
+    margin: 0.5rem 0;
+}
+
+/* FAQ Section */
+#faq {
+    background-color: #ffffff;
+    font-size: 1.1rem;
+    color: #7f8c8d;
+}
+
+#faq h3 {
+    margin-top: 1.5rem;
+    color: #3498db;
+}
+
+#faq p {
+    margin-bottom: 1.5rem;
+}
+
+/* Social Media Section */
+#social-media {
+    background-color: #3498db;
+    color: white;
+    text-align: center;
+}
+
+#social-media ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+#social-media li {
+    display: inline-block;
+    margin: 0.5rem 1rem;
+}
+
+#social-media a {
+    color: white;
+    font-size: 1.5rem;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+#social-media a:hover {
+    color: #ecf0f1;
 }
 
 /* Footer */
 footer {
-    background-color: #2a76d2;
+    background-color: #34495e;
     color: white;
+    padding: 1rem 0;
     text-align: center;
-    padding: 20px;
+    font-size: 1rem;
 }
 
-footer p {
-    font-size: 1em;
-}
-
-/* Social Media Links */
-#social-media ul {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-}
-
-#social-media li a {
-    text-decoration: none;
-    font-size: 1.5em;
-    color: #333;
-    transition: color 0.3s ease;
-}
-
-#social-media li a:hover {
-    color: #2a76d2;
-}
-
-/* Service Areas */
-#service-areas ul {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    flex-wrap: wrap;
-}
-
-#service-areas ul li {
-    font-size: 1.1em;
-}
-
-/* Media Queries */
-@media screen and (max-width: 768px) {
+/* Responsive Design */
+@media (max-width: 768px) {
     header h1 {
-        font-size: 2em;
-    }
-
-    header p {
-        font-size: 1em;
+        font-size: 2rem;
     }
 
     section {
-        padding: 20px 10px;
+        padding: 2rem 1rem;
     }
 
-    section h2 {
-        font-size: 1.8em;
+    .service h3 {
+        font-size: 1.6rem;
     }
 
-    section p {
-        font-size: 1em;
+    .service p, #testimonials blockquote {
+        font-size: 1rem;
     }
 
-    ul li {
-        font-size: 1em;
+    #gallery .gallery-images {
+        grid-template-columns: 1fr;
     }
 
-    .gallery-images {
-        flex-direction: column;
-        align-items: center;
+    #special-offers p {
+        font-size: 1rem;
     }
 
-    .gallery-images img {
-        width: 100%;
-        max-width: 250px;
+    #faq p {
+        font-size: 1rem;
     }
 
-    footer p {
-        font-size: 0.9em;
+    button {
+        padding: 0.8rem 1.5rem;
+        font-size: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    #social-media a {
+        font-size: 1.2rem;
+    }
+
+    footer {
+        font-size: 0.9rem;
     }
 }
