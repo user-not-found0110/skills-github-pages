@@ -2,6 +2,7 @@ package com.example.missedcallsms;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
@@ -79,24 +80,49 @@ public class MainActivity extends AppCompatActivity {
         }
 
         SubscriptionManager sm = getSystemService(SubscriptionManager.class);
-        List<SubscriptionInfo> sims = sm.getActiveSubscriptionInfoList();
+        List<SubscriptionInfo> sims = null;
+        try {
+            sims = sm.getActiveSubscriptionInfoList();
+        } catch (Exception ignored) {}
 
         subscriptionIds.clear();
         List<String> labels = new ArrayList<>();
 
-        if (sims == null || sims.isEmpty()) {
-            labels.add("No SIMs detected");
-            subscriptionIds.add(-1);
-        } else {
+        if (sims != null && !sims.isEmpty()) {
             for (SubscriptionInfo info : sims) {
                 CharSequence name = info.getDisplayName();
+                boolean isEsim = Build.VERSION.SDK_INT >= 28 && info.isEmbedded();
+                int slot = info.getSimSlotIndex();
+
+                String label;
+                if (name != null && name.length() > 0) {
+                    label = name.toString();
+                } else if (isEsim) {
+                    label = "eSIM";
+                } else {
+                    label = "SIM " + (slot + 1);
+                }
+
+                if (isEsim) {
+                    label = "[eSIM] " + label;
+                }
+
                 String number = info.getNumber();
-                String label = (name != null ? name.toString() : "SIM " + (info.getSimSlotIndex() + 1));
                 if (number != null && !number.isEmpty()) {
                     label += " (" + number + ")";
                 }
                 labels.add(label);
                 subscriptionIds.add(info.getSubscriptionId());
+            }
+        } else {
+            // Fallback: getActiveSubscriptionInfoList() unavailable (common with eSIM-only devices)
+            int defaultSubId = SubscriptionManager.getDefaultSmsSubscriptionId();
+            if (defaultSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                labels.add("Default SIM");
+                subscriptionIds.add(defaultSubId);
+            } else {
+                labels.add("Default SIM");
+                subscriptionIds.add(-1);
             }
         }
 
@@ -104,8 +130,8 @@ public class MainActivity extends AppCompatActivity {
             android.R.layout.simple_spinner_item, labels);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         simSpinner.setAdapter(adapter);
+        simSpinner.setEnabled(true);
 
-        // Restore saved selection
         int savedSubId = prefs.getSubscriptionId();
         int savedIndex = subscriptionIds.indexOf(savedSubId);
         if (savedIndex >= 0) {
@@ -114,9 +140,7 @@ public class MainActivity extends AppCompatActivity {
 
         simSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                // Selection saved on Save button press
-            }
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {}
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
