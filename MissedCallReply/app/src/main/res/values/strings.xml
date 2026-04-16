@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Missed Call Reply</string>
+    <string name="label_enable">Enable auto-reply on missed calls</string>
+    <string name="label_sim_picker">Select SIM to monitor:</string>
+    <string name="label_reply_message">Auto-reply message:</string>
+    <string name="btn_save">Save Settings</string>
+    <string name="notif_channel_name">Call Monitor</string>
+    <string name="notif_title">Missed Call Reply Active</string>
+    <string name="notif_text">Monitoring for missed calls</string>
+    <string name="permission_rationale">This app needs Phone, Call Log, SMS, and Notification permissions to detect missed calls and send automatic replies.</string>
+    <string name="permission_permanently_denied">Some permissions were permanently denied. Please grant them in app Settings to use this app.</string>
+    <string name="open_settings">Open Settings</string>
+    <string name="status_saved">Settings saved.</string>
+    <string name="status_service_started">Monitoring active.</string>
+    <string name="status_service_stopped">Monitoring stopped.</string>
+    <string name="status_no_sims">No SIM cards detected.</string>
+    <string name="sim_unknown_number">unknown number</string>
+    <string name="error_empty_message">Reply message cannot be empty.</string>
+</resources>
