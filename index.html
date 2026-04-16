@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a4d8c">
+  <meta name="description" content="Splash Pressure Washing - Quote Builder">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Splash PW">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="stylesheet" href="style.css">
+  <title>Splash Pressure Washing</title>
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-content">
+      <img src="icons/icon.svg" alt="" class="header-icon">
+      <div>
+        <h1>Splash Pressure Washing</h1>
+        <p class="header-sub">Quote Builder</p>
+      </div>
+    </div>
+    <button id="installBtn" class="install-btn" style="display:none">Install App</button>
+  </header>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="alert"></div>
+
+  <!-- Tab Content -->
+  <main class="tab-content">
+
+    <!-- TAB 1: Customer Info -->
+    <section id="tab-customer" class="tab-panel active">
+      <h2 class="section-title">Customer Information</h2>
+      <div class="card">
+        <div class="form-group">
+          <label for="fullName">Full Name <span class="req">*</span></label>
+          <input type="text" id="fullName" placeholder="John Smith" autocomplete="name">
+        </div>
+        <div class="form-group">
+          <label for="address">Address <span class="req">*</span></label>
+          <textarea id="address" rows="2" placeholder="123 Main St, City, ST 12345" autocomplete="street-address"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="homeSqft">Home Sq Ft</label>
+            <input type="number" id="homeSqft" placeholder="e.g. 2400" inputmode="numeric">
+          </div>
+          <div class="form-group">
+            <label for="phone">Phone</label>
+            <input type="tel" id="phone" placeholder="(555) 123-4567" autocomplete="tel">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" placeholder="john@example.com" autocomplete="email">
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: Services -->
+    <section id="tab-services" class="tab-panel">
+      <h2 class="section-title">Services</h2>
+
+      <!-- House Wash -->
+      <div class="card service-card" data-service="houseWash">
+        <label class="service-header">
+          <input type="checkbox" class="service-check" data-service="houseWash">
+          <span class="checkmark"></span>
+          <span class="service-name">House Wash</span>
+        </label>
+        <div class="service-details">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Siding Type</label>
+              <select id="houseWash-sidingType">
+                <option value="">Select...</option>
+                <option value="vinyl">Vinyl</option>
+                <option value="brick">Brick</option>
+                <option value="hardie">Hardie Board</option>
+                <option value="stucco">Stucco</option>
+                <option value="aluminum">Aluminum</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Square Feet</label>
+              <input type="number" id="houseWash-sqft" placeholder="Sq ft" inputmode="numeric">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Driveway -->
+      <div class="card service-card" data-service="driveway">
+        <label class="service-header">
+          <input type="checkbox" class="service-check" data-service="driveway">
+          <span class="checkmark"></span>
+          <span class="service-name">Driveway / Concrete Cleaning</span>
+        </label>
+        <div class="service-details">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Driveway Size</label>
+              <select id="driveway-size">
+                <option value="">Select...</option>
+                <option value="1car">1 Car</option>
+                <option value="2car">2 Car</option>
+                <option value="4car">4 Car</option>
+                <option value="6car">6 Car</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Square Feet</label>
+              <input type="number" id="driveway-sqft" placeholder="Sq ft" inputmode="numeric">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gutter Cleaning -->
+      <div class="card service-card" data-service="gutterCleaning">
+        <label class="service-header">
+          <input type="checkbox" class="service-check" data-service="gutterCleaning">
+          <span class="checkmark"></span>
+          <span class="service-name">Gutter Cleaning</span>
+        </label>
+        <div class="service-details">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Stories</label>
+              <select id="gutter-stories">
+                <option value="">Select...</option>
+                <option value="1">1 Story</option>
+                <option value="2">2 Story</option>
+                <option value="3+">3+ Story</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Linear Feet</label>
+              <input type="number" id="gutter-linearFeet" placeholder="Linear ft" inputmode="numeric">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vinyl Fence -->
+      <div class="card service-card" data-service="vinylFence">
+        <label class="service-header">
+          <input type="checkbox" class="service-check" data-service="vinylFence">
+          <span class="checkmark"></span>
+          <span class="service-name">Vinyl Fence Cleaning</span>
+        </label>
+        <div class="service-details">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Range</label>
+              <select id="fence-range">
+                <option value="">Select...</option>
+                <option value="0-50">0 - 50 ft</option>
+                <option value="51-100">51 - 100 ft</option>
+                <option value="101-200">101 - 200 ft</option>
+                <option value="200+">200+ ft</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Linear Feet</label>
+              <input type="number" id="fence-linearFeet" placeholder="Linear ft" inputmode="numeric">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Other -->
+      <div class="card service-card" data-service="other">
+        <label class="service-header">
+          <input type="checkbox" class="service-check" data-service="other">
+          <span class="checkmark"></span>
+          <span class="service-name">Other Cleaning</span>
+        </label>
+        <div class="service-details">
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="other-description" rows="2" placeholder="Describe the cleaning needed..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quoted Price -->
+      <div class="card price-card">
+        <div class="form-group">
+          <label for="quotedPrice">Quoted Price</label>
+          <div class="price-input-wrap">
+            <span class="price-symbol">$</span>
+            <input type="text" id="quotedPrice" placeholder="0.00" inputmode="decimal">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: Checklist -->
+    <section id="tab-checklist" class="tab-panel">
+      <h2 class="section-title">Job Checklist</h2>
+      <div class="card">
+        <div class="checklist-item">
+          <label class="toggle-label">
+            <span>Working exterior spigot/faucet?</span>
+            <input type="checkbox" id="chk-spigot" class="toggle-input">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="checklist-item">
+          <label class="toggle-label">
+            <span>Move items away from house?</span>
+            <input type="checkbox" id="chk-moveItems" class="toggle-input">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="checklist-item">
+          <label class="toggle-label">
+            <span>Pets secured / inside?</span>
+            <input type="checkbox" id="chk-pets" class="toggle-input">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="checklist-item">
+          <label class="toggle-label">
+            <span>Vehicles moved from work area?</span>
+            <input type="checkbox" id="chk-vehicles" class="toggle-input">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="checklist-item">
+          <label class="toggle-label">
+            <span>All windows and doors closed?</span>
+            <input type="checkbox" id="chk-windows" class="toggle-input">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="checklist-item">
+          <label class="toggle-label">
+            <span>Special landscaping / plant care?</span>
+            <input type="checkbox" id="chk-specialCare" class="toggle-input">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="checklist-item sub-field" id="specialCareWrap" style="display:none">
+          <div class="form-group">
+            <label for="specialCareDetails">Details</label>
+            <input type="text" id="specialCareDetails" placeholder="e.g. Fragile plants near porch">
+          </div>
+        </div>
+        <div class="checklist-item">
+          <div class="form-group">
+            <label for="chk-dayTime">Day & Time of Job</label>
+            <input type="text" id="chk-dayTime" placeholder="e.g. Saturday 9 AM">
+          </div>
+        </div>
+        <div class="checklist-item">
+          <div class="form-group">
+            <label for="chk-notes">Notes</label>
+            <textarea id="chk-notes" rows="3" placeholder="Any other notes or concerns..."></textarea>
+          </div>
+        </div>
+      </div>
+      <button id="saveBtn" class="btn-primary">Save Quote</button>
+    </section>
+
+    <!-- TAB 4: Saved -->
+    <section id="tab-saved" class="tab-panel">
+      <div class="saved-header">
+        <h2 class="section-title">Saved Quotes</h2>
+        <button id="newQuoteBtn" class="btn-secondary">+ New Quote</button>
+      </div>
+      <div id="savedList" class="saved-list"></div>
+      <p id="emptyMsg" class="empty-msg">No saved quotes yet.</p>
+    </section>
+  </main>
+
+  <!-- Quote Detail Modal -->
+  <div id="detailModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modalTitle">Quote Details</h2>
+        <button id="modalClose" class="modal-close-btn" aria-label="Close">&times;</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="customer">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span>Customer</span>
+    </button>
+    <button class="nav-btn" data-tab="services">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      <span>Services</span>
+    </button>
+    <button class="nav-btn" data-tab="checklist">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      <span>Checklist</span>
+    </button>
+    <button class="nav-btn" data-tab="saved">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      <span>Saved</span>
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+</body>
+</html>

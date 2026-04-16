@@ -1,0 +1,24 @@
+{
+  "name": "Splash Pressure Washing",
+  "short_name": "Splash PW",
+  "description": "Quote builder for Splash Pressure Washing",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a4d8c",
+  "theme_color": "#0a4d8c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
