@@ -93,6 +93,10 @@
               <input type="number" id="houseWash-sqft" placeholder="Sq ft" inputmode="numeric">
             </div>
           </div>
+          <div class="form-group service-price-group">
+            <label>Price</label>
+            <div class="price-input-wrap"><span class="price-symbol">$</span><input type="text" id="houseWash-price" placeholder="0.00" inputmode="decimal" class="service-price"></div>
+          </div>
         </div>
       </div>
 
@@ -121,6 +125,10 @@
               <input type="number" id="driveway-sqft" placeholder="Sq ft" inputmode="numeric">
             </div>
           </div>
+          <div class="form-group service-price-group">
+            <label>Price</label>
+            <div class="price-input-wrap"><span class="price-symbol">$</span><input type="text" id="driveway-price" placeholder="0.00" inputmode="decimal" class="service-price"></div>
+          </div>
         </div>
       </div>
 
@@ -146,6 +154,10 @@
               <label>Linear Feet</label>
               <input type="number" id="gutter-linearFeet" placeholder="Linear ft" inputmode="numeric">
             </div>
+          </div>
+          <div class="form-group service-price-group">
+            <label>Price</label>
+            <div class="price-input-wrap"><span class="price-symbol">$</span><input type="text" id="gutter-price" placeholder="0.00" inputmode="decimal" class="service-price"></div>
           </div>
         </div>
       </div>
@@ -175,6 +187,10 @@
               <input type="number" id="fence-linearFeet" placeholder="Linear ft" inputmode="numeric">
             </div>
           </div>
+          <div class="form-group service-price-group">
+            <label>Price</label>
+            <div class="price-input-wrap"><span class="price-symbol">$</span><input type="text" id="fence-price" placeholder="0.00" inputmode="decimal" class="service-price"></div>
+          </div>
         </div>
       </div>
 
@@ -190,16 +206,24 @@
             <label>Description</label>
             <textarea id="other-description" rows="2" placeholder="Describe the cleaning needed..."></textarea>
           </div>
+          <div class="form-group service-price-group">
+            <label>Price</label>
+            <div class="price-input-wrap"><span class="price-symbol">$</span><input type="text" id="other-price" placeholder="0.00" inputmode="decimal" class="service-price"></div>
+          </div>
         </div>
       </div>
 
-      <!-- Quoted Price -->
+      <!-- Total -->
       <div class="card price-card">
-        <div class="form-group">
-          <label for="quotedPrice">Quoted Price</label>
+        <div class="total-row">
+          <span class="total-label">Total</span>
+          <span class="total-amount" id="totalAmount">$0.00</span>
+        </div>
+        <div class="form-group" style="margin-top:10px">
+          <label for="quotedPrice">Override Total (optional)</label>
           <div class="price-input-wrap">
             <span class="price-symbol">$</span>
-            <input type="text" id="quotedPrice" placeholder="0.00" inputmode="decimal">
+            <input type="text" id="quotedPrice" placeholder="Leave blank to use sum above" inputmode="decimal">
           </div>
         </div>
       </div>
@@ -292,6 +316,9 @@
         <button id="modalClose" class="modal-close-btn" aria-label="Close">&times;</button>
       </div>
       <div id="modalBody" class="modal-body"></div>
+      <div class="modal-footer">
+        <button id="generatePdfBtn" class="btn-primary">Generate Quote PDF</button>
+      </div>
     </div>
   </div>
 

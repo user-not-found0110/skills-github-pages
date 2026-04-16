@@ -22,8 +22,12 @@
   const specialCareWrap = document.getElementById('specialCareWrap');
   const phoneInput = document.getElementById('phone');
 
+  const generatePdfBtn = document.getElementById('generatePdfBtn');
+  const totalAmountEl = document.getElementById('totalAmount');
+
   let deferredPrompt = null;
   let draftTimer = null;
+  let currentDetailQuote = null;
 
   // --- Tab Navigation ---
   function switchTab(tabName) {
@@ -49,8 +53,28 @@
       } else {
         card.classList.remove('expanded');
       }
+      updateTotal();
       scheduleDraftSave();
     });
+  });
+
+  // --- Auto-calculate total from service prices ---
+  function updateTotal() {
+    const prices = document.querySelectorAll('.service-price');
+    let sum = 0;
+    prices.forEach(input => {
+      const card = input.closest('.service-card');
+      const chk = card.querySelector('.service-check');
+      if (chk.checked) {
+        const val = parseFloat(input.value.replace(/[^0-9.]/g, ''));
+        if (!isNaN(val)) sum += val;
+      }
+    });
+    totalAmountEl.textContent = '$' + sum.toFixed(2);
+  }
+
+  document.querySelectorAll('.service-price').forEach(input => {
+    input.addEventListener('input', () => { updateTotal(); scheduleDraftSave(); });
   });
 
   // --- Special Care Toggle ---
@@ -88,26 +112,31 @@
         houseWash: {
           selected: document.querySelector('.service-check[data-service="houseWash"]').checked,
           sidingType: document.getElementById('houseWash-sidingType').value,
-          squareFeet: document.getElementById('houseWash-sqft').value
+          squareFeet: document.getElementById('houseWash-sqft').value,
+          price: document.getElementById('houseWash-price').value.trim()
         },
         driveway: {
           selected: document.querySelector('.service-check[data-service="driveway"]').checked,
           size: document.getElementById('driveway-size').value,
-          squareFeet: document.getElementById('driveway-sqft').value
+          squareFeet: document.getElementById('driveway-sqft').value,
+          price: document.getElementById('driveway-price').value.trim()
         },
         gutterCleaning: {
           selected: document.querySelector('.service-check[data-service="gutterCleaning"]').checked,
           stories: document.getElementById('gutter-stories').value,
-          linearFeet: document.getElementById('gutter-linearFeet').value
+          linearFeet: document.getElementById('gutter-linearFeet').value,
+          price: document.getElementById('gutter-price').value.trim()
         },
         vinylFence: {
           selected: document.querySelector('.service-check[data-service="vinylFence"]').checked,
           linearFootRange: document.getElementById('fence-range').value,
-          linearFeet: document.getElementById('fence-linearFeet').value
+          linearFeet: document.getElementById('fence-linearFeet').value,
+          price: document.getElementById('fence-price').value.trim()
         },
         other: {
           selected: document.querySelector('.service-check[data-service="other"]').checked,
-          description: document.getElementById('other-description').value.trim()
+          description: document.getElementById('other-description').value.trim(),
+          price: document.getElementById('other-price').value.trim()
         }
       },
       quotedPrice: document.getElementById('quotedPrice').value.trim(),
@@ -143,6 +172,7 @@
       if (chk.checked) chk.closest('.service-card').classList.add('expanded');
       document.getElementById('houseWash-sidingType').value = s.houseWash.sidingType || '';
       document.getElementById('houseWash-sqft').value = s.houseWash.squareFeet || '';
+      document.getElementById('houseWash-price').value = s.houseWash.price || '';
     }
     // Driveway
     if (s.driveway) {
@@ -151,6 +181,7 @@
       if (chk.checked) chk.closest('.service-card').classList.add('expanded');
       document.getElementById('driveway-size').value = s.driveway.size || '';
       document.getElementById('driveway-sqft').value = s.driveway.squareFeet || '';
+      document.getElementById('driveway-price').value = s.driveway.price || '';
     }
     // Gutter
     if (s.gutterCleaning) {
@@ -159,6 +190,7 @@
       if (chk.checked) chk.closest('.service-card').classList.add('expanded');
       document.getElementById('gutter-stories').value = s.gutterCleaning.stories || '';
       document.getElementById('gutter-linearFeet').value = s.gutterCleaning.linearFeet || '';
+      document.getElementById('gutter-price').value = s.gutterCleaning.price || '';
     }
     // Vinyl Fence
     if (s.vinylFence) {
@@ -167,6 +199,7 @@
       if (chk.checked) chk.closest('.service-card').classList.add('expanded');
       document.getElementById('fence-range').value = s.vinylFence.linearFootRange || '';
       document.getElementById('fence-linearFeet').value = s.vinylFence.linearFeet || '';
+      document.getElementById('fence-price').value = s.vinylFence.price || '';
     }
     // Other
     if (s.other) {
@@ -174,7 +207,10 @@
       chk.checked = s.other.selected || false;
       if (chk.checked) chk.closest('.service-card').classList.add('expanded');
       document.getElementById('other-description').value = s.other.description || '';
+      document.getElementById('other-price').value = s.other.price || '';
     }
+
+    updateTotal();
 
     document.getElementById('quotedPrice').value = data.quotedPrice || '';
 
@@ -206,14 +242,20 @@
 
     document.getElementById('houseWash-sidingType').value = '';
     document.getElementById('houseWash-sqft').value = '';
+    document.getElementById('houseWash-price').value = '';
     document.getElementById('driveway-size').value = '';
     document.getElementById('driveway-sqft').value = '';
+    document.getElementById('driveway-price').value = '';
     document.getElementById('gutter-stories').value = '';
     document.getElementById('gutter-linearFeet').value = '';
+    document.getElementById('gutter-price').value = '';
     document.getElementById('fence-range').value = '';
     document.getElementById('fence-linearFeet').value = '';
+    document.getElementById('fence-price').value = '';
     document.getElementById('other-description').value = '';
+    document.getElementById('other-price').value = '';
     document.getElementById('quotedPrice').value = '';
+    totalAmountEl.textContent = '$0.00';
 
     document.getElementById('chk-spigot').checked = false;
     document.getElementById('chk-moveItems').checked = false;
@@ -348,6 +390,7 @@
 
   // --- Quote Detail Modal ---
   function showQuoteDetail(q) {
+    currentDetailQuote = q;
     modalTitle.textContent = q.customer.fullName || 'Quote Details';
     let html = '';
 
@@ -437,6 +480,138 @@
     const map = { '1car': '1 Car', '2car': '2 Car', '4car': '4 Car', '6car': '6 Car', 'other': 'Other' };
     return map[s] || s;
   }
+
+  // --- PDF Generation ---
+  function getQuoteTotal(q) {
+    if (q.quotedPrice) return q.quotedPrice;
+    const s = q.services || {};
+    let sum = 0;
+    ['houseWash', 'driveway', 'gutterCleaning', 'vinylFence', 'other'].forEach(key => {
+      if (s[key] && s[key].selected && s[key].price) {
+        const val = parseFloat(s[key].price.replace(/[^0-9.]/g, ''));
+        if (!isNaN(val)) sum += val;
+      }
+    });
+    return sum.toFixed(2);
+  }
+
+  function buildServiceRows(q) {
+    const s = q.services || {};
+    let rows = '';
+    if (s.houseWash && s.houseWash.selected) {
+      let detail = [];
+      if (s.houseWash.sidingType) detail.push(capitalize(s.houseWash.sidingType));
+      if (s.houseWash.squareFeet) detail.push(s.houseWash.squareFeet + ' sq ft');
+      rows += `<tr><td>House Wash${detail.length ? '<div class="detail">' + escHtml(detail.join(' | ')) + '</div>' : ''}</td><td>${s.houseWash.price ? '$' + escHtml(s.houseWash.price) : '-'}</td></tr>`;
+    }
+    if (s.driveway && s.driveway.selected) {
+      let detail = [];
+      if (s.driveway.size) detail.push(formatSize(s.driveway.size));
+      if (s.driveway.squareFeet) detail.push(s.driveway.squareFeet + ' sq ft');
+      rows += `<tr><td>Driveway / Concrete Cleaning${detail.length ? '<div class="detail">' + escHtml(detail.join(' | ')) + '</div>' : ''}</td><td>${s.driveway.price ? '$' + escHtml(s.driveway.price) : '-'}</td></tr>`;
+    }
+    if (s.gutterCleaning && s.gutterCleaning.selected) {
+      let detail = [];
+      if (s.gutterCleaning.stories) detail.push(s.gutterCleaning.stories + ' story');
+      if (s.gutterCleaning.linearFeet) detail.push(s.gutterCleaning.linearFeet + ' linear ft');
+      rows += `<tr><td>Gutter Cleaning${detail.length ? '<div class="detail">' + escHtml(detail.join(' | ')) + '</div>' : ''}</td><td>${s.gutterCleaning.price ? '$' + escHtml(s.gutterCleaning.price) : '-'}</td></tr>`;
+    }
+    if (s.vinylFence && s.vinylFence.selected) {
+      let detail = [];
+      if (s.vinylFence.linearFootRange) detail.push(s.vinylFence.linearFootRange + ' ft range');
+      if (s.vinylFence.linearFeet) detail.push(s.vinylFence.linearFeet + ' linear ft');
+      rows += `<tr><td>Vinyl Fence Cleaning${detail.length ? '<div class="detail">' + escHtml(detail.join(' | ')) + '</div>' : ''}</td><td>${s.vinylFence.price ? '$' + escHtml(s.vinylFence.price) : '-'}</td></tr>`;
+    }
+    if (s.other && s.other.selected) {
+      let detail = s.other.description ? s.other.description : '';
+      rows += `<tr><td>Other Cleaning${detail ? '<div class="detail">' + escHtml(detail) + '</div>' : ''}</td><td>${s.other.price ? '$' + escHtml(s.other.price) : '-'}</td></tr>`;
+    }
+    return rows;
+  }
+
+  function generatePdf(q) {
+    const total = getQuoteTotal(q);
+    const date = new Date(q.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const serviceRows = buildServiceRows(q);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'pdf-overlay';
+    overlay.innerHTML = `
+      <div class="pdf-toolbar">
+        <button class="btn-secondary" id="pdfClose">Close</button>
+        <div>
+          <button class="btn-secondary" id="pdfShare">Share</button>
+          <button class="btn-primary" id="pdfPrint" style="display:inline-block;width:auto;padding:10px 20px;margin-top:0">Save PDF</button>
+        </div>
+      </div>
+      <div class="pdf-page" id="pdfPage">
+        <div class="pdf-header">
+          <div class="pdf-brand">
+            <h2>Splash Pressure Washing</h2>
+            <p>Professional Exterior Cleaning Services</p>
+          </div>
+          <div class="pdf-quote-label">
+            <h3>Quote</h3>
+            <p>${escHtml(date)}</p>
+          </div>
+        </div>
+        <div class="pdf-customer">
+          <h4>Prepared For</h4>
+          <p><strong>${escHtml(q.customer.fullName)}</strong></p>
+          <p>${escHtml(q.customer.address)}</p>
+          ${q.customer.phone ? '<p>' + escHtml(q.customer.phone) + '</p>' : ''}
+          ${q.customer.email ? '<p>' + escHtml(q.customer.email) + '</p>' : ''}
+        </div>
+        <table class="pdf-table">
+          <thead><tr><th>Service</th><th>Price</th></tr></thead>
+          <tbody>
+            ${serviceRows}
+            <tr class="pdf-total-row"><td><strong>Total</strong></td><td>$${escHtml(total)}</td></tr>
+          </tbody>
+        </table>
+        <div class="pdf-footer">
+          <p>Thank you for choosing Splash Pressure Washing!</p>
+          <p>This quote is valid for 30 days from the date above.</p>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#pdfClose').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('#pdfPrint').addEventListener('click', () => window.print());
+    overlay.querySelector('#pdfShare').addEventListener('click', () => {
+      const text = buildShareText(q, total);
+      if (navigator.share) {
+        navigator.share({ title: 'Quote - ' + q.customer.fullName, text: text });
+      } else {
+        navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard'));
+      }
+    });
+  }
+
+  function buildShareText(q, total) {
+    let text = 'SPLASH PRESSURE WASHING\nQuote for ' + q.customer.fullName + '\n';
+    text += q.customer.address + '\n';
+    text += new Date(q.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) + '\n\n';
+    text += 'SERVICES:\n';
+    const s = q.services || {};
+    if (s.houseWash?.selected) text += '- House Wash' + (s.houseWash.price ? ': $' + s.houseWash.price : '') + '\n';
+    if (s.driveway?.selected) text += '- Driveway / Concrete' + (s.driveway.price ? ': $' + s.driveway.price : '') + '\n';
+    if (s.gutterCleaning?.selected) text += '- Gutter Cleaning' + (s.gutterCleaning.price ? ': $' + s.gutterCleaning.price : '') + '\n';
+    if (s.vinylFence?.selected) text += '- Vinyl Fence' + (s.vinylFence.price ? ': $' + s.vinylFence.price : '') + '\n';
+    if (s.other?.selected) text += '- Other: ' + (s.other.description || '') + (s.other.price ? ' $' + s.other.price : '') + '\n';
+    text += '\nTOTAL: $' + total + '\n';
+    text += '\nThank you for choosing Splash Pressure Washing!';
+    return text;
+  }
+
+  generatePdfBtn.addEventListener('click', () => {
+    if (currentDetailQuote) {
+      closeModal();
+      generatePdf(currentDetailQuote);
+    }
+  });
 
   // --- Toast ---
   function showToast(msg) {
