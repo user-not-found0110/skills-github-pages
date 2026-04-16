@@ -17,7 +17,6 @@ public class PhoneStateReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
-            // Nothing to do on boot; BroadcastReceiver re-registers automatically.
             return;
         }
 
@@ -27,38 +26,29 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         Prefs prefs = new Prefs(context);
         if (!prefs.isEnabled()) return;
 
-        switch (state) {
-            case TelephonyManager.EXTRA_STATE_RINGING: {
-                String number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER);
-                prefs.setWasRinging(true);
-                prefs.setWasOffhook(false);
+        if (TelephonyManager.EXTRA_STATE_RINGING.equals(state)) {
+            String number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER);
+            prefs.setWasRinging(true);
+            prefs.setWasOffhook(false);
+            if (number != null && !number.isEmpty()) {
+                prefs.setIncomingNumber(number);
+            }
+        } else if (TelephonyManager.EXTRA_STATE_OFFHOOK.equals(state)) {
+            prefs.setWasOffhook(true);
+        } else if (TelephonyManager.EXTRA_STATE_IDLE.equals(state)) {
+            if (prefs.wasRinging() && !prefs.wasOffhook()) {
+                String number = resolveCallerNumber(context, prefs.getIncomingNumber());
                 if (number != null && !number.isEmpty()) {
-                    prefs.setIncomingNumber(number);
+                    sendSms(context, prefs, number);
+                } else {
+                    Log.w(TAG, "Missed call detected but could not determine caller number.");
                 }
-                break;
             }
-            case TelephonyManager.EXTRA_STATE_OFFHOOK: {
-                prefs.setWasOffhook(true);
-                break;
-            }
-            case TelephonyManager.EXTRA_STATE_IDLE: {
-                if (prefs.wasRinging() && !prefs.wasOffhook()) {
-                    // Call went from ringing to idle without being answered = missed call
-                    String number = resolveCallerNumber(context, prefs.getIncomingNumber());
-                    if (number != null && !number.isEmpty()) {
-                        sendSms(context, prefs, number);
-                    } else {
-                        Log.w(TAG, "Missed call detected but could not determine caller number.");
-                    }
-                }
-                prefs.clearCallState();
-                break;
-            }
+            prefs.clearCallState();
         }
     }
 
     private String resolveCallerNumber(Context context, String cached) {
-        // Try CallLog first (most reliable on API 29+)
         try {
             ContentResolver cr = context.getContentResolver();
             String[] projection = {CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE};
