@@ -41,15 +41,10 @@ public class PhoneStateReceiver extends BroadcastReceiver {
             prefs.clearCallState();
 
             if (wasMissed) {
-                // Use goAsync so we can wait for the call log to be written
-                // (the log is often not updated yet at the moment IDLE fires)
                 final PendingResult pendingResult = goAsync();
                 new Thread(() -> {
                     try {
-                        Thread.sleep(2500);
-                    } catch (InterruptedException ignored) {}
-                    try {
-                        String number = resolveCallerNumber(context, cachedNumber);
+                        String number = pollCallLog(context, cachedNumber);
                         if (number != null && !number.isEmpty()) {
                             sendSms(context, prefs, number);
                         } else {
@@ -63,10 +58,22 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         }
     }
 
-    private String resolveCallerNumber(Context context, String cached) {
+    private String pollCallLog(Context context, String cached) {
+        // Poll up to 5 times (1s apart) — call log is often written with a short delay
+        for (int attempt = 0; attempt < 5; attempt++) {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException ignored) {}
+            String number = readMissedCallNumber(context);
+            if (number != null) return number;
+        }
+        return cached;
+    }
+
+    private String readMissedCallNumber(Context context) {
         try {
             ContentResolver cr = context.getContentResolver();
-            String[] projection = {CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE};
+            String[] projection = {CallLog.Calls.NUMBER, CallLog.Calls.TYPE};
             Cursor cursor = cr.query(
                 CallLog.Calls.CONTENT_URI,
                 projection,
@@ -89,9 +96,9 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                 }
             }
         } catch (SecurityException e) {
-            Log.w(TAG, "READ_CALL_LOG denied, using broadcast number");
+            Log.w(TAG, "READ_CALL_LOG denied");
         }
-        return cached;
+        return null;
     }
 
     private void sendSms(Context context, Prefs prefs, String toNumber) {

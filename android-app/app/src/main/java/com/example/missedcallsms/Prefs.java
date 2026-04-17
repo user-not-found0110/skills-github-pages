@@ -29,20 +29,21 @@ class Prefs {
     String getMessage() { return sp.getString(KEY_MESSAGE, DEFAULT_MESSAGE); }
     void setMessage(String msg) { sp.edit().putString(KEY_MESSAGE, msg).apply(); }
 
+    // Call state uses commit() (synchronous) so it survives process death between broadcasts
     boolean wasRinging() { return sp.getBoolean(KEY_WAS_RINGING, false); }
-    void setWasRinging(boolean v) { sp.edit().putBoolean(KEY_WAS_RINGING, v).apply(); }
+    void setWasRinging(boolean v) { sp.edit().putBoolean(KEY_WAS_RINGING, v).commit(); }
 
     boolean wasOffhook() { return sp.getBoolean(KEY_WAS_OFFHOOK, false); }
-    void setWasOffhook(boolean v) { sp.edit().putBoolean(KEY_WAS_OFFHOOK, v).apply(); }
+    void setWasOffhook(boolean v) { sp.edit().putBoolean(KEY_WAS_OFFHOOK, v).commit(); }
 
     String getIncomingNumber() { return sp.getString(KEY_INCOMING_NUMBER, null); }
-    void setIncomingNumber(String n) { sp.edit().putString(KEY_INCOMING_NUMBER, n).apply(); }
+    void setIncomingNumber(String n) { sp.edit().putString(KEY_INCOMING_NUMBER, n).commit(); }
 
     void clearCallState() {
         sp.edit()
             .remove(KEY_WAS_RINGING)
             .remove(KEY_WAS_OFFHOOK)
             .remove(KEY_INCOMING_NUMBER)
-            .apply();
+            .commit();
     }
 }
