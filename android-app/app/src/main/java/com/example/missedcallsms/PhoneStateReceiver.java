@@ -36,15 +36,30 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         } else if (TelephonyManager.EXTRA_STATE_OFFHOOK.equals(state)) {
             prefs.setWasOffhook(true);
         } else if (TelephonyManager.EXTRA_STATE_IDLE.equals(state)) {
-            if (prefs.wasRinging() && !prefs.wasOffhook()) {
-                String number = resolveCallerNumber(context, prefs.getIncomingNumber());
-                if (number != null && !number.isEmpty()) {
-                    sendSms(context, prefs, number);
-                } else {
-                    Log.w(TAG, "Missed call detected but could not determine caller number.");
-                }
-            }
+            boolean wasMissed = prefs.wasRinging() && !prefs.wasOffhook();
+            String cachedNumber = prefs.getIncomingNumber();
             prefs.clearCallState();
+
+            if (wasMissed) {
+                // Use goAsync so we can wait for the call log to be written
+                // (the log is often not updated yet at the moment IDLE fires)
+                final PendingResult pendingResult = goAsync();
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(2500);
+                    } catch (InterruptedException ignored) {}
+                    try {
+                        String number = resolveCallerNumber(context, cachedNumber);
+                        if (number != null && !number.isEmpty()) {
+                            sendSms(context, prefs, number);
+                        } else {
+                            Log.w(TAG, "Missed call but could not determine caller number.");
+                        }
+                    } finally {
+                        pendingResult.finish();
+                    }
+                }).start();
+            }
         }
     }
 
@@ -52,19 +67,20 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         try {
             ContentResolver cr = context.getContentResolver();
             String[] projection = {CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE};
-            String selection = CallLog.Calls.TYPE + " = " + CallLog.Calls.MISSED_TYPE;
             Cursor cursor = cr.query(
                 CallLog.Calls.CONTENT_URI,
                 projection,
-                selection,
+                null,
                 null,
                 CallLog.Calls.DATE + " DESC"
             );
             if (cursor != null) {
                 try {
                     if (cursor.moveToFirst()) {
+                        int type = cursor.getInt(cursor.getColumnIndexOrThrow(CallLog.Calls.TYPE));
                         String number = cursor.getString(cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER));
-                        if (number != null && !number.isEmpty() && !number.equals("-1")) {
+                        if (type == CallLog.Calls.MISSED_TYPE
+                                && number != null && !number.isEmpty() && !number.equals("-1")) {
                             return number;
                         }
                     }
@@ -73,7 +89,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                 }
             }
         } catch (SecurityException e) {
-            Log.w(TAG, "READ_CALL_LOG permission denied, falling back to broadcast number");
+            Log.w(TAG, "READ_CALL_LOG denied, using broadcast number");
         }
         return cached;
     }
