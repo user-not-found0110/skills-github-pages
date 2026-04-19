@@ -1,4 +1,4 @@
-const CACHE_NAME = 'splash-pw-v3';
+const CACHE_NAME = 'splash-pw-v4';
 const ASSETS = [
   './',
   './index.html',

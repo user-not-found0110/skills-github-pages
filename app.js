@@ -717,6 +717,14 @@
     }
   });
 
+  // --- New Quote (Customer tab) ---
+  document.getElementById('newQuoteBtnCustomer').addEventListener('click', () => {
+    clearForm();
+    saveBtn.textContent = 'Save Quote';
+    switchTab('customer');
+    document.getElementById('fullName').focus();
+  });
+
   // --- Edit Quote ---
   editQuoteBtn.addEventListener('click', () => {
     if (!currentDetailQuote) return;
