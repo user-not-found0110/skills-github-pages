@@ -213,8 +213,31 @@
         </div>
       </div>
 
+      <!-- Discount -->
+      <div class="card discount-card">
+        <div class="discount-header">
+          <label class="discount-label">Discount</label>
+          <div class="discount-toggle">
+            <button class="disc-type-btn active" data-type="dollar">$</button>
+            <button class="disc-type-btn" data-type="percent">%</button>
+          </div>
+        </div>
+        <div class="price-input-wrap">
+          <span class="price-symbol" id="discountSymbol">$</span>
+          <input type="text" id="discountAmount" placeholder="0.00" inputmode="decimal">
+        </div>
+      </div>
+
       <!-- Total -->
       <div class="card price-card">
+        <div class="total-row subtotal-row">
+          <span class="subtotal-label">Subtotal</span>
+          <span class="subtotal-amount" id="subtotalAmount">$0.00</span>
+        </div>
+        <div class="total-row discount-row" id="discountRow" style="display:none">
+          <span class="subtotal-label discount-text">Discount</span>
+          <span class="subtotal-amount discount-text" id="discountDisplay">-$0.00</span>
+        </div>
         <div class="total-row">
           <span class="total-label">Total</span>
           <span class="total-amount" id="totalAmount">$0.00</span>
@@ -317,7 +340,10 @@
       </div>
       <div id="modalBody" class="modal-body"></div>
       <div class="modal-footer">
-        <button id="generatePdfBtn" class="btn-primary">Generate Quote PDF</button>
+        <div class="modal-footer-row">
+          <button id="editQuoteBtn" class="btn-secondary">Edit Quote</button>
+          <button id="generatePdfBtn" class="btn-primary" style="margin-top:0;flex:1">Generate Quote PDF</button>
+        </div>
       </div>
     </div>
   </div>

@@ -23,11 +23,20 @@
   const phoneInput = document.getElementById('phone');
 
   const generatePdfBtn = document.getElementById('generatePdfBtn');
+  const editQuoteBtn = document.getElementById('editQuoteBtn');
   const totalAmountEl = document.getElementById('totalAmount');
+  const subtotalAmountEl = document.getElementById('subtotalAmount');
+  const discountRow = document.getElementById('discountRow');
+  const discountDisplay = document.getElementById('discountDisplay');
+  const discountAmountInput = document.getElementById('discountAmount');
+  const discountSymbol = document.getElementById('discountSymbol');
+  const discTypeBtns = document.querySelectorAll('.disc-type-btn');
 
   let deferredPrompt = null;
   let draftTimer = null;
   let currentDetailQuote = null;
+  let editingQuoteId = null;
+  let discountType = 'dollar';
 
   // --- Tab Navigation ---
   function switchTab(tabName) {
@@ -58,19 +67,54 @@
     });
   });
 
+  // --- Discount Toggle ---
+  discTypeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      discTypeBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      discountType = btn.dataset.type;
+      discountSymbol.textContent = discountType === 'dollar' ? '$' : '%';
+      updateTotal();
+      scheduleDraftSave();
+    });
+  });
+
+  discountAmountInput.addEventListener('input', () => { updateTotal(); scheduleDraftSave(); });
+
   // --- Auto-calculate total from service prices ---
   function updateTotal() {
     const prices = document.querySelectorAll('.service-price');
-    let sum = 0;
+    let subtotal = 0;
     prices.forEach(input => {
       const card = input.closest('.service-card');
       const chk = card.querySelector('.service-check');
       if (chk.checked) {
         const val = parseFloat(input.value.replace(/[^0-9.]/g, ''));
-        if (!isNaN(val)) sum += val;
+        if (!isNaN(val)) subtotal += val;
       }
     });
-    totalAmountEl.textContent = '$' + sum.toFixed(2);
+
+    const discVal = parseFloat(discountAmountInput.value.replace(/[^0-9.]/g, '')) || 0;
+    let discountAmount = 0;
+    if (discVal > 0) {
+      if (discountType === 'percent') {
+        discountAmount = subtotal * (discVal / 100);
+      } else {
+        discountAmount = discVal;
+      }
+    }
+
+    const total = Math.max(0, subtotal - discountAmount);
+    subtotalAmountEl.textContent = '$' + subtotal.toFixed(2);
+
+    if (discVal > 0) {
+      discountRow.style.display = 'flex';
+      discountDisplay.textContent = '-$' + discountAmount.toFixed(2);
+    } else {
+      discountRow.style.display = 'none';
+    }
+
+    totalAmountEl.textContent = '$' + total.toFixed(2);
   }
 
   document.querySelectorAll('.service-price').forEach(input => {
@@ -138,6 +182,10 @@
           description: document.getElementById('other-description').value.trim(),
           price: document.getElementById('other-price').value.trim()
         }
+      },
+      discount: {
+        type: discountType,
+        amount: discountAmountInput.value.trim()
       },
       quotedPrice: document.getElementById('quotedPrice').value.trim(),
       checklist: {
@@ -210,6 +258,15 @@
       document.getElementById('other-price').value = s.other.price || '';
     }
 
+    // Discount
+    const disc = data.discount || {};
+    discountType = disc.type || 'dollar';
+    discTypeBtns.forEach(b => {
+      b.classList.toggle('active', b.dataset.type === discountType);
+    });
+    discountSymbol.textContent = discountType === 'dollar' ? '$' : '%';
+    discountAmountInput.value = disc.amount || '';
+
     updateTotal();
 
     document.getElementById('quotedPrice').value = data.quotedPrice || '';
@@ -255,7 +312,14 @@
     document.getElementById('other-description').value = '';
     document.getElementById('other-price').value = '';
     document.getElementById('quotedPrice').value = '';
+    discountAmountInput.value = '';
+    discountType = 'dollar';
+    discTypeBtns.forEach(b => b.classList.toggle('active', b.dataset.type === 'dollar'));
+    discountSymbol.textContent = '$';
+    discountRow.style.display = 'none';
+    subtotalAmountEl.textContent = '$0.00';
     totalAmountEl.textContent = '$0.00';
+    editingQuoteId = null;
 
     document.getElementById('chk-spigot').checked = false;
     document.getElementById('chk-moveItems').checked = false;
@@ -324,19 +388,27 @@
     }
     const data = collectFormData();
     const quotes = loadQuotes();
-    quotes.unshift(data);
+
+    if (editingQuoteId) {
+      const idx = quotes.findIndex(q => q.id === editingQuoteId);
+      if (idx !== -1) {
+        data.id = editingQuoteId;
+        data.createdAt = quotes[idx].createdAt;
+        data.updatedAt = new Date().toISOString();
+        quotes[idx] = data;
+      }
+      editingQuoteId = null;
+      showToast('Quote updated!');
+    } else {
+      quotes.unshift(data);
+      showToast('Quote saved!');
+    }
+
     saveQuotesToStorage(quotes);
     localStorage.removeItem(DRAFT_KEY);
     clearForm();
-    showToast('Quote saved!');
+    saveBtn.textContent = 'Save Quote';
     switchTab('saved');
-  });
-
-  // --- New Quote ---
-  newQuoteBtn.addEventListener('click', () => {
-    clearForm();
-    switchTab('customer');
-    document.getElementById('fullName').focus();
   });
 
   // --- Render Saved Quotes ---
@@ -362,6 +434,7 @@
 
     quotes.forEach(q => {
       const tags = getServiceLabels(q.services || {});
+      const total = getQuoteTotal(q);
       const card = document.createElement('div');
       card.className = 'quote-card';
       card.innerHTML = `
@@ -372,7 +445,7 @@
           <div class="quote-tags">${tags.map(t => `<span class="quote-tag">${t}</span>`).join('')}</div>
         </div>
         <div class="quote-actions">
-          ${q.quotedPrice ? `<div class="quote-price">$${escHtml(q.quotedPrice)}</div>` : ''}
+          ${parseFloat(total) > 0 ? `<div class="quote-price">$${escHtml(total)}</div>` : ''}
           <button class="btn-danger delete-btn" data-id="${q.id}">Delete</button>
         </div>
       `;
@@ -482,8 +555,7 @@
   }
 
   // --- PDF Generation ---
-  function getQuoteTotal(q) {
-    if (q.quotedPrice) return q.quotedPrice;
+  function getServiceSubtotal(q) {
     const s = q.services || {};
     let sum = 0;
     ['houseWash', 'driveway', 'gutterCleaning', 'vinylFence', 'other'].forEach(key => {
@@ -492,7 +564,21 @@
         if (!isNaN(val)) sum += val;
       }
     });
-    return sum.toFixed(2);
+    return sum;
+  }
+
+  function getDiscountAmount(subtotal, q) {
+    const disc = q.discount || {};
+    const val = parseFloat((disc.amount || '0').replace(/[^0-9.]/g, '')) || 0;
+    if (val <= 0) return 0;
+    return disc.type === 'percent' ? subtotal * (val / 100) : val;
+  }
+
+  function getQuoteTotal(q) {
+    if (q.quotedPrice) return q.quotedPrice;
+    const subtotal = getServiceSubtotal(q);
+    const discount = getDiscountAmount(subtotal, q);
+    return Math.max(0, subtotal - discount).toFixed(2);
   }
 
   function buildServiceRows(q) {
@@ -530,9 +616,18 @@
   }
 
   function generatePdf(q) {
+    const subtotal = getServiceSubtotal(q);
+    const discountAmt = getDiscountAmount(subtotal, q);
     const total = getQuoteTotal(q);
     const date = new Date(q.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     const serviceRows = buildServiceRows(q);
+
+    const disc = q.discount || {};
+    let discountRowHtml = '';
+    if (discountAmt > 0) {
+      const discLabel = disc.type === 'percent' ? 'Discount (' + disc.amount + '%)' : 'Discount';
+      discountRowHtml = `<tr><td>${discLabel}</td><td style="color:#2ecc71">-$${discountAmt.toFixed(2)}</td></tr>`;
+    }
 
     const overlay = document.createElement('div');
     overlay.className = 'pdf-overlay';
@@ -566,6 +661,8 @@
           <thead><tr><th>Service</th><th>Price</th></tr></thead>
           <tbody>
             ${serviceRows}
+            ${discountAmt > 0 ? '<tr><td>Subtotal</td><td>$' + subtotal.toFixed(2) + '</td></tr>' : ''}
+            ${discountRowHtml}
             <tr class="pdf-total-row"><td><strong>Total</strong></td><td>$${escHtml(total)}</td></tr>
           </tbody>
         </table>
@@ -601,6 +698,13 @@
     if (s.gutterCleaning?.selected) text += '- Gutter Cleaning' + (s.gutterCleaning.price ? ': $' + s.gutterCleaning.price : '') + '\n';
     if (s.vinylFence?.selected) text += '- Vinyl Fence' + (s.vinylFence.price ? ': $' + s.vinylFence.price : '') + '\n';
     if (s.other?.selected) text += '- Other: ' + (s.other.description || '') + (s.other.price ? ' $' + s.other.price : '') + '\n';
+    const subtotal = getServiceSubtotal(q);
+    const discountAmt = getDiscountAmount(subtotal, q);
+    if (discountAmt > 0) {
+      const disc = q.discount || {};
+      text += '\nSubtotal: $' + subtotal.toFixed(2);
+      text += '\nDiscount: -$' + discountAmt.toFixed(2) + (disc.type === 'percent' ? ' (' + disc.amount + '% off)' : '') + '\n';
+    }
     text += '\nTOTAL: $' + total + '\n';
     text += '\nThank you for choosing Splash Pressure Washing!';
     return text;
@@ -611,6 +715,27 @@
       closeModal();
       generatePdf(currentDetailQuote);
     }
+  });
+
+  // --- Edit Quote ---
+  editQuoteBtn.addEventListener('click', () => {
+    if (!currentDetailQuote) return;
+    editingQuoteId = currentDetailQuote.id;
+    clearForm();
+    editingQuoteId = currentDetailQuote.id;
+    populateForm(currentDetailQuote);
+    saveBtn.textContent = 'Update Quote';
+    closeModal();
+    switchTab('customer');
+    showToast('Editing quote — make changes and tap Update');
+  });
+
+  // --- New Quote ---
+  newQuoteBtn.addEventListener('click', () => {
+    clearForm();
+    saveBtn.textContent = 'Save Quote';
+    switchTab('customer');
+    document.getElementById('fullName').focus();
   });
 
   // --- Toast ---
