@@ -38,7 +38,13 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         if (TelephonyManager.EXTRA_STATE_RINGING.equals(state)) {
             int incomingSubId = getIncomingSubId(intent);
             int savedSubId = prefs.getSubscriptionId();
-            if (!isMonitoredSim(incomingSubId, savedSubId)) return;
+            boolean matched = isMonitoredSim(incomingSubId, savedSubId);
+
+            // Debug: always show which SIMs are being compared
+            showNotification(context, matched ? "Call on monitored SIM" : "Call on other SIM — skipping",
+                "incoming subId=" + incomingSubId + "  saved subId=" + savedSubId);
+
+            if (!matched) return;
             String number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER);
             prefs.setWasRinging(true);
             prefs.setWasOffhook(false);
@@ -106,7 +112,6 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                 ? SmsManager.getDefault()
                 : SmsManager.getSmsManagerForSubscriptionId(subId);
             smsManager.sendTextMessage(toNumber, null, message, sentPI, null);
-            Log.i(TAG, "sendTextMessage called to=" + toNumber + " subId=" + subId);
         } catch (SecurityException e) {
             try { context.unregisterReceiver(sentReceiver); } catch (Exception ignored) {}
             showNotification(context, "Auto-reply failed", "SEND_SMS permission denied");
