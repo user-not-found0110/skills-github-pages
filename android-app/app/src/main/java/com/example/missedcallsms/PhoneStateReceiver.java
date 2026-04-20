@@ -1,18 +1,24 @@
 package com.example.missedcallsms;
 
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
+import android.os.Build;
 import android.provider.CallLog;
 import android.telephony.SmsManager;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
+import androidx.core.app.NotificationCompat;
+
 public class PhoneStateReceiver extends BroadcastReceiver {
 
     private static final String TAG = "MissedCallSMS";
+    private static final String CHANNEL_ID = "missed_call_sms";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -46,9 +52,14 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                     try {
                         String number = pollCallLog(context, cachedNumber);
                         if (number != null && !number.isEmpty()) {
-                            sendSms(context, prefs, number);
+                            boolean sent = sendSms(context, prefs, number);
+                            notify(context,
+                                sent ? "Auto-reply sent" : "Auto-reply failed",
+                                sent ? "SMS sent to " + number : "Failed to send SMS to " + number);
                         } else {
-                            Log.w(TAG, "Missed call but could not determine caller number.");
+                            Log.w(TAG, "Missed call — caller number not found.");
+                            notify(context, "Auto-reply failed",
+                                "Missed call detected but caller number could not be found.");
                         }
                     } finally {
                         pendingResult.finish();
@@ -59,11 +70,8 @@ public class PhoneStateReceiver extends BroadcastReceiver {
     }
 
     private String pollCallLog(Context context, String cached) {
-        // Poll up to 5 times (1s apart) — call log is often written with a short delay
         for (int attempt = 0; attempt < 5; attempt++) {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException ignored) {}
+            try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
             String number = readMissedCallNumber(context);
             if (number != null) return number;
         }
@@ -75,10 +83,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
             ContentResolver cr = context.getContentResolver();
             String[] projection = {CallLog.Calls.NUMBER, CallLog.Calls.TYPE};
             Cursor cursor = cr.query(
-                CallLog.Calls.CONTENT_URI,
-                projection,
-                null,
-                null,
+                CallLog.Calls.CONTENT_URI, projection, null, null,
                 CallLog.Calls.DATE + " DESC"
             );
             if (cursor != null) {
@@ -101,7 +106,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         return null;
     }
 
-    private void sendSms(Context context, Prefs prefs, String toNumber) {
+    private boolean sendSms(Context context, Prefs prefs, String toNumber) {
         String message = prefs.getMessage();
         int subId = prefs.getSubscriptionId();
         try {
@@ -109,11 +114,31 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                 ? SmsManager.getDefault()
                 : SmsManager.getSmsManagerForSubscriptionId(subId);
             smsManager.sendTextMessage(toNumber, null, message, null, null);
-            Log.i(TAG, "Auto-reply SMS sent to " + toNumber);
+            Log.i(TAG, "SMS sent to " + toNumber);
+            return true;
         } catch (SecurityException e) {
-            Log.e(TAG, "SEND_SMS permission denied: " + e.getMessage());
+            Log.e(TAG, "SEND_SMS denied: " + e.getMessage());
+            return false;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to send SMS: " + e.getMessage());
+            Log.e(TAG, "SMS failed: " + e.getMessage());
+            return false;
         }
+    }
+
+    private void notify(Context context, String title, String text) {
+        NotificationManager nm =
+            (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            nm.createNotificationChannel(new NotificationChannel(
+                CHANNEL_ID, "Missed Call SMS", NotificationManager.IMPORTANCE_DEFAULT));
+        }
+        nm.notify((int) System.currentTimeMillis(),
+            new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setAutoCancel(true)
+                .build());
     }
 }
