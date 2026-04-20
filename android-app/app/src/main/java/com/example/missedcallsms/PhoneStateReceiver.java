@@ -34,7 +34,15 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         if (!prefs.isEnabled()) return;
 
         if (TelephonyManager.EXTRA_STATE_RINGING.equals(state)) {
-            if (!isMonitoredSim(intent, prefs)) return;
+            int incomingSubId = getIncomingSubId(intent);
+            int savedSubId = prefs.getSubscriptionId();
+            Log.d(TAG, "RINGING: incomingSubId=" + incomingSubId + " savedSubId=" + savedSubId);
+
+            if (!isMonitoredSim(incomingSubId, savedSubId)) {
+                notify(context, "Call on different SIM",
+                    "Incoming sub=" + incomingSubId + ", saved sub=" + savedSubId + " — skipping.");
+                return;
+            }
             String number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER);
             prefs.setWasRinging(true);
             prefs.setWasOffhook(false);
@@ -73,19 +81,21 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         }
     }
 
-    private boolean isMonitoredSim(Intent intent, Prefs prefs) {
-        int savedSubId = prefs.getSubscriptionId();
-        if (savedSubId == -1) return true;
-        int incomingSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    private int getIncomingSubId(Intent intent) {
+        int subId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            incomingSubId = intent.getIntExtra(
+            subId = intent.getIntExtra(
                 SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,
                 SubscriptionManager.INVALID_SUBSCRIPTION_ID);
         }
-        if (incomingSubId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-            incomingSubId = intent.getIntExtra("subscription",
-                SubscriptionManager.INVALID_SUBSCRIPTION_ID);
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            subId = intent.getIntExtra("subscription", SubscriptionManager.INVALID_SUBSCRIPTION_ID);
         }
+        return subId;
+    }
+
+    private boolean isMonitoredSim(int incomingSubId, int savedSubId) {
+        if (savedSubId == -1) return true;
         if (incomingSubId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) return true;
         return incomingSubId == savedSubId;
     }
@@ -159,6 +169,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(title)
                 .setContentText(text)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
                 .setAutoCancel(true)
                 .build());
     }
