@@ -12,11 +12,14 @@ import android.database.Cursor;
 import android.os.Build;
 import android.provider.CallLog;
 import android.telephony.SmsManager;
+import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
+
+import java.util.List;
 
 public class PhoneStateReceiver extends BroadcastReceiver {
 
@@ -36,15 +39,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         if (!prefs.isEnabled()) return;
 
         if (TelephonyManager.EXTRA_STATE_RINGING.equals(state)) {
-            int incomingSubId = getIncomingSubId(intent);
-            int savedSubId = prefs.getSubscriptionId();
-            boolean matched = isMonitoredSim(incomingSubId, savedSubId);
-
-            // Debug: always show which SIMs are being compared
-            showNotification(context, matched ? "Call on monitored SIM" : "Call on other SIM — skipping",
-                "incoming subId=" + incomingSubId + "  saved subId=" + savedSubId);
-
-            if (!matched) return;
+            if (!isMonitoredSimRinging(context, prefs)) return;
             String number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER);
             prefs.setWasRinging(true);
             prefs.setWasOffhook(false);
@@ -75,6 +70,28 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                 }).start();
             }
         }
+    }
+
+    private boolean isMonitoredSimRinging(Context context, Prefs prefs) {
+        int savedSubId = prefs.getSubscriptionId();
+        if (savedSubId == -1) return true;
+
+        try {
+            SubscriptionManager sm = context.getSystemService(SubscriptionManager.class);
+            List<SubscriptionInfo> sims = sm.getActiveSubscriptionInfoList();
+            if (sims == null || sims.size() <= 1) return true;
+
+            TelephonyManager baseTm = context.getSystemService(TelephonyManager.class);
+            for (SubscriptionInfo info : sims) {
+                TelephonyManager tm = baseTm.createForSubscriptionId(info.getSubscriptionId());
+                if (tm.getCallState() == TelephonyManager.CALL_STATE_RINGING) {
+                    return info.getSubscriptionId() == savedSubId;
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not check per-SIM call state: " + e.getMessage());
+        }
+        return true;
     }
 
     private void sendSmsWithReceipt(Context context, Prefs prefs, String toNumber) {
@@ -127,24 +144,6 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         if (code == SmsManager.RESULT_ERROR_RADIO_OFF)       return "radio off";
         if (code == SmsManager.RESULT_ERROR_NULL_PDU)        return "null PDU";
         return "code " + code;
-    }
-
-    private int getIncomingSubId(Intent intent) {
-        int subId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            subId = intent.getIntExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,
-                SubscriptionManager.INVALID_SUBSCRIPTION_ID);
-        }
-        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-            subId = intent.getIntExtra("subscription", SubscriptionManager.INVALID_SUBSCRIPTION_ID);
-        }
-        return subId;
-    }
-
-    private boolean isMonitoredSim(int incomingSubId, int savedSubId) {
-        if (savedSubId == -1) return true;
-        if (incomingSubId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) return true;
-        return incomingSubId == savedSubId;
     }
 
     private String pollCallLog(Context context, String cached) {
