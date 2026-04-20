@@ -15,6 +15,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -25,8 +26,11 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -39,6 +43,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView statusText;
     private TextView batteryWarning;
     private Button batteryBtn;
+    private TextView noHistoryText;
+    private LinearLayout historyLayout;
 
     private final List<Integer> subscriptionIds = new ArrayList<>();
 
@@ -55,8 +61,11 @@ public class MainActivity extends AppCompatActivity {
         statusText = findViewById(R.id.text_status);
         batteryWarning = findViewById(R.id.text_battery_warning);
         batteryBtn = findViewById(R.id.btn_battery);
+        noHistoryText = findViewById(R.id.text_no_history);
+        historyLayout = findViewById(R.id.layout_history);
         Button grantBtn = findViewById(R.id.btn_grant);
         Button saveBtn = findViewById(R.id.btn_save);
+        Button clearHistoryBtn = findViewById(R.id.btn_clear_history);
 
         enableSwitch.setChecked(prefs.isEnabled());
         messageEdit.setText(prefs.getMessage());
@@ -64,10 +73,15 @@ public class MainActivity extends AppCompatActivity {
         grantBtn.setOnClickListener(v -> requestPermissions());
         saveBtn.setOnClickListener(v -> saveSettings());
         batteryBtn.setOnClickListener(v -> requestBatteryOptimizationExemption());
+        clearHistoryBtn.setOnClickListener(v -> {
+            prefs.clearLog();
+            refreshHistory();
+        });
 
         updateStatusText();
         updateBatteryWarning();
         populateSimSpinner();
+        refreshHistory();
     }
 
     @Override
@@ -75,6 +89,36 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         updateStatusText();
         updateBatteryWarning();
+        refreshHistory();
+    }
+
+    private void refreshHistory() {
+        historyLayout.removeAllViews();
+        List<String[]> entries = prefs.getLogEntries();
+        if (entries.isEmpty()) {
+            noHistoryText.setVisibility(View.VISIBLE);
+            return;
+        }
+        noHistoryText.setVisibility(View.GONE);
+        SimpleDateFormat sdf = new SimpleDateFormat("MMM d, yyyy h:mm a", Locale.getDefault());
+        for (String[] entry : entries) {
+            try {
+                long ts = Long.parseLong(entry[0]);
+                String number = entry[1];
+                String dateStr = sdf.format(new Date(ts));
+                TextView tv = new TextView(this);
+                tv.setText(dateStr + "  \u2192  " + number);
+                tv.setTextSize(14);
+                tv.setPadding(0, 8, 0, 8);
+                historyLayout.addView(tv);
+
+                View divider = new View(this);
+                divider.setBackgroundColor(0xFFEEEEEE);
+                LinearLayout.LayoutParams lp =
+                    new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1);
+                historyLayout.addView(divider, lp);
+            } catch (Exception ignored) {}
+        }
     }
 
     private void updateBatteryWarning() {
@@ -82,7 +126,7 @@ public class MainActivity extends AppCompatActivity {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
                 batteryWarning.setText(
-                    "Battery optimization is ON — Android may block calls from being detected. Tap below to fix.");
+                    "Battery optimization is ON \u2014 Android may block calls from being detected. Tap below to fix.");
                 batteryWarning.setVisibility(View.VISIBLE);
                 batteryBtn.setVisibility(View.VISIBLE);
             } else {
@@ -106,12 +150,9 @@ public class MainActivity extends AppCompatActivity {
             simSpinner.setEnabled(false);
             return;
         }
-
         SubscriptionManager sm = getSystemService(SubscriptionManager.class);
         List<SubscriptionInfo> sims = null;
-        try {
-            sims = sm.getActiveSubscriptionInfoList();
-        } catch (Exception ignored) {}
+        try { sims = sm.getActiveSubscriptionInfoList(); } catch (Exception ignored) {}
 
         subscriptionIds.clear();
         List<String> labels = new ArrayList<>();
@@ -121,17 +162,9 @@ public class MainActivity extends AppCompatActivity {
                 CharSequence name = info.getDisplayName();
                 boolean isEsim = Build.VERSION.SDK_INT >= 28 && info.isEmbedded();
                 int slot = info.getSimSlotIndex();
-
-                String label;
-                if (name != null && name.length() > 0) {
-                    label = name.toString();
-                } else if (isEsim) {
-                    label = "eSIM";
-                } else {
-                    label = "SIM " + (slot + 1);
-                }
+                String label = (name != null && name.length() > 0) ? name.toString()
+                    : isEsim ? "eSIM" : "SIM " + (slot + 1);
                 if (isEsim) label = "[eSIM] " + label;
-
                 String number = info.getNumber();
                 if (number != null && !number.isEmpty()) label += " (" + number + ")";
                 labels.add(label);
@@ -150,8 +183,7 @@ public class MainActivity extends AppCompatActivity {
         simSpinner.setAdapter(adapter);
         simSpinner.setEnabled(true);
 
-        int savedSubId = prefs.getSubscriptionId();
-        int savedIndex = subscriptionIds.indexOf(savedSubId);
+        int savedIndex = subscriptionIds.indexOf(prefs.getSubscriptionId());
         if (savedIndex >= 0) simSpinner.setSelection(savedIndex);
 
         simSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -163,23 +195,17 @@ public class MainActivity extends AppCompatActivity {
     private void saveSettings() {
         prefs.setEnabled(enableSwitch.isChecked());
         prefs.setMessage(messageEdit.getText().toString().trim());
-        int selectedPos = simSpinner.getSelectedItemPosition();
-        if (selectedPos >= 0 && selectedPos < subscriptionIds.size()) {
-            prefs.setSubscriptionId(subscriptionIds.get(selectedPos));
-        }
+        int pos = simSpinner.getSelectedItemPosition();
+        if (pos >= 0 && pos < subscriptionIds.size()) prefs.setSubscriptionId(subscriptionIds.get(pos));
         Toast.makeText(this, "Settings saved.", Toast.LENGTH_SHORT).show();
         updateStatusText();
     }
 
     private void requestPermissions() {
         List<String> missing = new ArrayList<>();
-        String[] base = {
-            Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.SEND_SMS,
-            Manifest.permission.READ_PHONE_NUMBERS
-        };
-        for (String p : base) {
+        for (String p : new String[]{
+                Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CALL_LOG,
+                Manifest.permission.SEND_SMS, Manifest.permission.READ_PHONE_NUMBERS}) {
             if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED)
                 missing.add(p);
         }
@@ -202,16 +228,12 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_PERMISSIONS) {
             boolean allGranted = true;
-            for (int r : grantResults) {
+            for (int r : grantResults)
                 if (r != PackageManager.PERMISSION_GRANTED) { allGranted = false; break; }
-            }
-            if (allGranted) {
-                Toast.makeText(this, "All permissions granted!", Toast.LENGTH_SHORT).show();
-                populateSimSpinner();
-            } else {
-                Toast.makeText(this,
-                    "Some permissions denied. App may not work correctly.", Toast.LENGTH_LONG).show();
-            }
+            Toast.makeText(this,
+                allGranted ? "All permissions granted!" : "Some permissions denied.",
+                Toast.LENGTH_SHORT).show();
+            if (allGranted) populateSimSpinner();
             updateStatusText();
         }
     }
@@ -223,13 +245,11 @@ public class MainActivity extends AppCompatActivity {
             == PackageManager.PERMISSION_GRANTED;
         boolean hasCallLog = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG)
             == PackageManager.PERMISSION_GRANTED;
-
-        if (!hasPhone || !hasSms || !hasCallLog) {
+        if (!hasPhone || !hasSms || !hasCallLog)
             statusText.setText("Permissions needed \u2014 tap Grant Permissions");
-        } else if (!prefs.isEnabled()) {
+        else if (!prefs.isEnabled())
             statusText.setText("Auto-reply is OFF. Toggle the switch and save.");
-        } else {
+        else
             statusText.setText("Active \u2014 will auto-reply to missed calls.");
-        }
     }
 }

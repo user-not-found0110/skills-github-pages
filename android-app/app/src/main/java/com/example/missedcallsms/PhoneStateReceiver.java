@@ -57,11 +57,11 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                         String number = pollCallLog(context, cachedNumber);
                         if (number != null && !number.isEmpty()) {
                             boolean sent = sendSms(context, prefs, number);
+                            if (sent) prefs.addLogEntry(number);
                             notify(context,
                                 sent ? "Auto-reply sent" : "Auto-reply failed",
                                 sent ? "SMS sent to " + number : "Failed to send SMS to " + number);
                         } else {
-                            Log.w(TAG, "Missed call \u2014 caller number not found.");
                             notify(context, "Auto-reply failed",
                                 "Missed call detected but caller number could not be found.");
                         }
@@ -75,23 +75,18 @@ public class PhoneStateReceiver extends BroadcastReceiver {
 
     private boolean isMonitoredSim(Intent intent, Prefs prefs) {
         int savedSubId = prefs.getSubscriptionId();
-        if (savedSubId == -1) return true; // no specific SIM saved, allow all
-
+        if (savedSubId == -1) return true;
         int incomingSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             incomingSubId = intent.getIntExtra(
                 SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,
                 SubscriptionManager.INVALID_SUBSCRIPTION_ID);
         }
-        // Samsung and older devices may use this hidden extra
         if (incomingSubId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
             incomingSubId = intent.getIntExtra("subscription",
                 SubscriptionManager.INVALID_SUBSCRIPTION_ID);
         }
-
-        if (incomingSubId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-            return true; // can't determine which SIM, allow through
-        }
+        if (incomingSubId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) return true;
         return incomingSubId == savedSubId;
     }
 
