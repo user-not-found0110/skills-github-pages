@@ -60,7 +60,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                         if (number != null && !number.isEmpty()) {
                             sendSmsWithReceipt(context, prefs, number);
                         } else {
-                            notify(context, "Auto-reply failed",
+                            showNotification(context, "Auto-reply failed",
                                 "Missed call detected but caller number could not be found.");
                         }
                     } finally {
@@ -87,11 +87,10 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                 int code = getResultCode();
                 if (code == android.app.Activity.RESULT_OK) {
                     prefs.addLogEntry(toNumber);
-                    notify(ctx, "Auto-reply sent", "SMS sent to " + toNumber);
+                    showNotification(ctx, "Auto-reply sent", "SMS sent to " + toNumber);
                 } else {
-                    String reason = smsErrorReason(code);
-                    notify(ctx, "Auto-reply failed",
-                        "To: " + toNumber + "  subId: " + subId + "  error: " + reason);
+                    showNotification(ctx, "Auto-reply failed",
+                        "To: " + toNumber + "  subId: " + subId + "  error: " + smsErrorReason(code));
                 }
             }
         };
@@ -110,21 +109,19 @@ public class PhoneStateReceiver extends BroadcastReceiver {
             Log.i(TAG, "sendTextMessage called to=" + toNumber + " subId=" + subId);
         } catch (SecurityException e) {
             try { context.unregisterReceiver(sentReceiver); } catch (Exception ignored) {}
-            notify(context, "Auto-reply failed", "SEND_SMS permission denied");
+            showNotification(context, "Auto-reply failed", "SEND_SMS permission denied");
         } catch (Exception e) {
             try { context.unregisterReceiver(sentReceiver); } catch (Exception ignored) {}
-            notify(context, "Auto-reply failed", "Exception: " + e.getMessage());
+            showNotification(context, "Auto-reply failed", "Exception: " + e.getMessage());
         }
     }
 
     private String smsErrorReason(int code) {
-        switch (code) {
-            case SmsManager.RESULT_ERROR_GENERIC_FAILURE: return "generic failure";
-            case SmsManager.RESULT_ERROR_NO_SERVICE:      return "no service";
-            case SmsManager.RESULT_ERROR_RADIO_OFF:       return "radio off";
-            case SmsManager.RESULT_ERROR_NULL_PDU:        return "null PDU";
-            default: return "code " + code;
-        }
+        if (code == SmsManager.RESULT_ERROR_GENERIC_FAILURE) return "generic failure";
+        if (code == SmsManager.RESULT_ERROR_NO_SERVICE)      return "no service";
+        if (code == SmsManager.RESULT_ERROR_RADIO_OFF)       return "radio off";
+        if (code == SmsManager.RESULT_ERROR_NULL_PDU)        return "null PDU";
+        return "code " + code;
     }
 
     private int getIncomingSubId(Intent intent) {
@@ -178,7 +175,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         return null;
     }
 
-    private void notify(Context context, String title, String text) {
+    private void showNotification(Context context, String title, String text) {
         NotificationManager nm =
             (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
