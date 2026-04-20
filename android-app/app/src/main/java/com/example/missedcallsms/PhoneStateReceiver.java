@@ -2,10 +2,12 @@ package com.example.missedcallsms;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.database.Cursor;
 import android.os.Build;
 import android.provider.CallLog;
@@ -36,13 +38,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         if (TelephonyManager.EXTRA_STATE_RINGING.equals(state)) {
             int incomingSubId = getIncomingSubId(intent);
             int savedSubId = prefs.getSubscriptionId();
-            Log.d(TAG, "RINGING: incomingSubId=" + incomingSubId + " savedSubId=" + savedSubId);
-
-            if (!isMonitoredSim(incomingSubId, savedSubId)) {
-                notify(context, "Call on different SIM",
-                    "Incoming sub=" + incomingSubId + ", saved sub=" + savedSubId + " — skipping.");
-                return;
-            }
+            if (!isMonitoredSim(incomingSubId, savedSubId)) return;
             String number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER);
             prefs.setWasRinging(true);
             prefs.setWasOffhook(false);
@@ -50,9 +46,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                 prefs.setIncomingNumber(number);
             }
         } else if (TelephonyManager.EXTRA_STATE_OFFHOOK.equals(state)) {
-            if (prefs.wasRinging()) {
-                prefs.setWasOffhook(true);
-            }
+            if (prefs.wasRinging()) prefs.setWasOffhook(true);
         } else if (TelephonyManager.EXTRA_STATE_IDLE.equals(state)) {
             boolean wasMissed = prefs.wasRinging() && !prefs.wasOffhook();
             String cachedNumber = prefs.getIncomingNumber();
@@ -64,11 +58,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                     try {
                         String number = pollCallLog(context, cachedNumber);
                         if (number != null && !number.isEmpty()) {
-                            boolean sent = sendSms(context, prefs, number);
-                            if (sent) prefs.addLogEntry(number);
-                            notify(context,
-                                sent ? "Auto-reply sent" : "Auto-reply failed",
-                                sent ? "SMS sent to " + number : "Failed to send SMS to " + number);
+                            sendSmsWithReceipt(context, prefs, number);
                         } else {
                             notify(context, "Auto-reply failed",
                                 "Missed call detected but caller number could not be found.");
@@ -81,11 +71,66 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         }
     }
 
+    private void sendSmsWithReceipt(Context context, Prefs prefs, String toNumber) {
+        String message = prefs.getMessage();
+        int subId = prefs.getSubscriptionId();
+        String action = "com.example.missedcallsms.SMS_SENT_" + System.currentTimeMillis();
+
+        PendingIntent sentPI = PendingIntent.getBroadcast(
+            context, 0, new Intent(action),
+            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_ONE_SHOT);
+
+        BroadcastReceiver sentReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context ctx, Intent i) {
+                try { ctx.unregisterReceiver(this); } catch (Exception ignored) {}
+                int code = getResultCode();
+                if (code == android.app.Activity.RESULT_OK) {
+                    prefs.addLogEntry(toNumber);
+                    notify(ctx, "Auto-reply sent", "SMS sent to " + toNumber);
+                } else {
+                    String reason = smsErrorReason(code);
+                    notify(ctx, "Auto-reply failed",
+                        "To: " + toNumber + "  subId: " + subId + "  error: " + reason);
+                }
+            }
+        };
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(sentReceiver, new IntentFilter(action),
+                    Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                context.registerReceiver(sentReceiver, new IntentFilter(action));
+            }
+            SmsManager smsManager = (subId == -1)
+                ? SmsManager.getDefault()
+                : SmsManager.getSmsManagerForSubscriptionId(subId);
+            smsManager.sendTextMessage(toNumber, null, message, sentPI, null);
+            Log.i(TAG, "sendTextMessage called to=" + toNumber + " subId=" + subId);
+        } catch (SecurityException e) {
+            try { context.unregisterReceiver(sentReceiver); } catch (Exception ignored) {}
+            notify(context, "Auto-reply failed", "SEND_SMS permission denied");
+        } catch (Exception e) {
+            try { context.unregisterReceiver(sentReceiver); } catch (Exception ignored) {}
+            notify(context, "Auto-reply failed", "Exception: " + e.getMessage());
+        }
+    }
+
+    private String smsErrorReason(int code) {
+        switch (code) {
+            case SmsManager.RESULT_ERROR_GENERIC_FAILURE: return "generic failure";
+            case SmsManager.RESULT_ERROR_NO_SERVICE:      return "no service";
+            case SmsManager.RESULT_ERROR_RADIO_OFF:       return "radio off";
+            case SmsManager.RESULT_ERROR_NULL_PDU:        return "null PDU";
+            default: return "code " + code;
+        }
+    }
+
     private int getIncomingSubId(Intent intent) {
         int subId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            subId = intent.getIntExtra(
-                SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,
+            subId = intent.getIntExtra(SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,
                 SubscriptionManager.INVALID_SUBSCRIPTION_ID);
         }
         if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
@@ -113,10 +158,8 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         try {
             ContentResolver cr = context.getContentResolver();
             String[] projection = {CallLog.Calls.NUMBER, CallLog.Calls.TYPE};
-            Cursor cursor = cr.query(
-                CallLog.Calls.CONTENT_URI, projection, null, null,
-                CallLog.Calls.DATE + " DESC"
-            );
+            Cursor cursor = cr.query(CallLog.Calls.CONTENT_URI, projection, null, null,
+                CallLog.Calls.DATE + " DESC");
             if (cursor != null) {
                 try {
                     if (cursor.moveToFirst()) {
@@ -127,33 +170,12 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                             return number;
                         }
                     }
-                } finally {
-                    cursor.close();
-                }
+                } finally { cursor.close(); }
             }
         } catch (SecurityException e) {
             Log.w(TAG, "READ_CALL_LOG denied");
         }
         return null;
-    }
-
-    private boolean sendSms(Context context, Prefs prefs, String toNumber) {
-        String message = prefs.getMessage();
-        int subId = prefs.getSubscriptionId();
-        try {
-            SmsManager smsManager = (subId == -1)
-                ? SmsManager.getDefault()
-                : SmsManager.getSmsManagerForSubscriptionId(subId);
-            smsManager.sendTextMessage(toNumber, null, message, null, null);
-            Log.i(TAG, "SMS sent to " + toNumber);
-            return true;
-        } catch (SecurityException e) {
-            Log.e(TAG, "SEND_SMS denied: " + e.getMessage());
-            return false;
-        } catch (Exception e) {
-            Log.e(TAG, "SMS failed: " + e.getMessage());
-            return false;
-        }
     }
 
     private void notify(Context context, String title, String text) {
