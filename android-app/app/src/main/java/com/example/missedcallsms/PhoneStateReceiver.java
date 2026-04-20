@@ -10,6 +10,7 @@ import android.database.Cursor;
 import android.os.Build;
 import android.provider.CallLog;
 import android.telephony.SmsManager;
+import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
@@ -33,6 +34,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
         if (!prefs.isEnabled()) return;
 
         if (TelephonyManager.EXTRA_STATE_RINGING.equals(state)) {
+            if (!isMonitoredSim(intent, prefs)) return;
             String number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER);
             prefs.setWasRinging(true);
             prefs.setWasOffhook(false);
@@ -40,7 +42,9 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                 prefs.setIncomingNumber(number);
             }
         } else if (TelephonyManager.EXTRA_STATE_OFFHOOK.equals(state)) {
-            prefs.setWasOffhook(true);
+            if (prefs.wasRinging()) {
+                prefs.setWasOffhook(true);
+            }
         } else if (TelephonyManager.EXTRA_STATE_IDLE.equals(state)) {
             boolean wasMissed = prefs.wasRinging() && !prefs.wasOffhook();
             String cachedNumber = prefs.getIncomingNumber();
@@ -57,7 +61,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                                 sent ? "Auto-reply sent" : "Auto-reply failed",
                                 sent ? "SMS sent to " + number : "Failed to send SMS to " + number);
                         } else {
-                            Log.w(TAG, "Missed call — caller number not found.");
+                            Log.w(TAG, "Missed call \u2014 caller number not found.");
                             notify(context, "Auto-reply failed",
                                 "Missed call detected but caller number could not be found.");
                         }
@@ -67,6 +71,28 @@ public class PhoneStateReceiver extends BroadcastReceiver {
                 }).start();
             }
         }
+    }
+
+    private boolean isMonitoredSim(Intent intent, Prefs prefs) {
+        int savedSubId = prefs.getSubscriptionId();
+        if (savedSubId == -1) return true; // no specific SIM saved, allow all
+
+        int incomingSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            incomingSubId = intent.getIntExtra(
+                SubscriptionManager.EXTRA_SUBSCRIPTION_INDEX,
+                SubscriptionManager.INVALID_SUBSCRIPTION_ID);
+        }
+        // Samsung and older devices may use this hidden extra
+        if (incomingSubId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            incomingSubId = intent.getIntExtra("subscription",
+                SubscriptionManager.INVALID_SUBSCRIPTION_ID);
+        }
+
+        if (incomingSubId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            return true; // can't determine which SIM, allow through
+        }
+        return incomingSubId == savedSubId;
     }
 
     private String pollCallLog(Context context, String cached) {
