@@ -1,7 +1,7 @@
 {
   "name": "Splash Pressure Washing",
   "short_name": "Splash PW",
-  "description": "Quote builder for Splash Pressure Washing",
+  "description": "Quote builder and daily content creator for Splash Pressure Washing",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0a4d8c",
@@ -19,6 +19,18 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Quote",
+      "url": "./index.html",
+      "description": "Build a new customer quote"
+    },
+    {
+      "name": "Today's Content",
+      "url": "./content.html",
+      "description": "Generate daily social content"
     }
   ]
 }

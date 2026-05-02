@@ -1,9 +1,12 @@
-const CACHE_NAME = 'splash-pw-v4';
+const CACHE_NAME = 'splash-pw-v5';
 const ASSETS = [
   './',
   './index.html',
+  './content.html',
   './style.css',
+  './content.css',
   './app.js',
+  './content.js',
   './manifest.json',
   './icons/icon.svg'
 ];
