@@ -1,4 +1,4 @@
-const CACHE_NAME = 'splash-pw-v4';
+const CACHE_NAME = 'splash-content-v1';
 const ASSETS = [
   './',
   './index.html',
@@ -20,7 +20,7 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
-        keys.filter(key => key !== CACHE_NAME && key.startsWith('splash-pw-'))
+        keys.filter(key => key !== CACHE_NAME && key.startsWith('splash-content-'))
           .map(key => caches.delete(key))
       )
     ).then(() => self.clients.claim())

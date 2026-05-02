@@ -1,0 +1,37 @@
+{
+  "name": "Splash Content Creator",
+  "short_name": "Splash Content",
+  "description": "Daily Google, Facebook, Instagram, and blog content for Splash Pressure Washing",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a4d8c",
+  "theme_color": "#0a4d8c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Today's Content",
+      "url": "./index.html",
+      "description": "Generate today's posts"
+    },
+    {
+      "name": "Build Week",
+      "url": "./index.html#week",
+      "description": "Build a 7-day calendar"
+    }
+  ]
+}

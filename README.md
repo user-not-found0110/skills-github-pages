@@ -1,74 +1,84 @@
-<header>
+# Splash Pressure Washing — PWAs
 
-<!--
-  <<< Author notes: Course header >>>
-  Include a 1280×640 image, course title in sentence case, and a concise description in emphasis.
-  In your repository settings: enable template repository, add your 1280×640 social image, auto delete head branches.
-  Add your open source license, GitHub uses MIT license.
--->
+Two separate, installable mobile-first apps for [Splash Pressure Washing](https://splashwashing.com), a veteran and firefighter owned company in Chesapeake, VA.
 
-# GitHub Pages
+| App | URL path | Purpose |
+|---|---|---|
+| **Quote Builder** | `/` | Build, save, and PDF customer quotes from your phone. |
+| **Content Creator** | `/content/` | Generate daily Google / Facebook / Instagram / blog posts. |
 
-_Create a site or blog from your GitHub repositories with GitHub Pages._
+Each app installs as its own Android home-screen icon with its own name. They share nothing at runtime — separate manifests, separate service workers, separate localStorage. You can install one, both, or neither.
 
-</header>
-
-<!--
-  <<< Author notes: Step 4 >>>
-  Start this step by acknowledging the previous step.
-  Define terms and link to docs.github.com.
-  Historic note: previous version checked the file path. Previous version checked the front matter formatting.
--->
-
-## Step 4: Create a blog post
-
-_Your home page is looking great! :cowboy_hat_face:_
-
-GitHub Pages uses Jekyll. In Jekyll, we can create a blog by using specially named files and frontmatter. The files must be named `_posts/YYYY-MM-DD-title.md`. You must also include `title` and `date` in your frontmatter.
-
-**What is _frontmatter_?**: The syntax Jekyll files use is called YAML frontmatter. It goes at the top of your file and looks something like this:
-
-```yml
 ---
-title: "Welcome to my blog"
-date: 2019-01-20
----
+
+## Content Creator — `/content/`
+
+Open `https://<your-pages-url>/content/` on Android Chrome → menu → **Add to Home screen**. The app installs as **"Splash Content"** and works offline.
+
+### Today tab
+Tap **Generate Today's Content** → instantly produces four ready-to-paste posts:
+
+- **Google Business Profile** — factual, location-rich, no emojis, professional CTA. Mentions the city and that you serve the broader Hampton Roads region. Posting weekly keeps your profile active in Google's local pack.
+- **Facebook** — friendly hook + body + light emojis + 1-2 hashtags. Length stays in the 80-250 char engagement sweet spot for local business pages.
+- **Instagram** — emoji hook in the first line + body + exactly **5 hashtags** (mixed brand / local / niche, the ratio that performs best for small local accounts).
+- **Website blog** — full Markdown article with editable title, meta description, AEO-friendly question header, three H2 sections, and an FAQ block. Copy as Markdown, as HTML, or as a Title + Meta + Body bundle.
+
+Other controls:
+- **Try a Different Angle** — same topic, fresh phrasing.
+- **Pick a different topic** — override today's auto-pick from a 25-topic library.
+- **Custom focus** — add a specific angle ("HOA", "townhome", "mold").
+- **Save to History** — keep what you posted (60-item rolling history).
+
+### Week tab
+**Build This Week** → 7 days of content with per-day, per-platform copy buttons.
+
+### History tab
+Restore, copy, or delete any past saved entry.
+
+### Tips tab
+Best post times by platform, what to add to every post, SEO + AEO quick rules.
+
+### Daily posting recipe (~5 min)
+1. Tap **Generate Today's Content**.
+2. **Google** → Copy → open the GBP app → Add update → paste → attach a recent job photo.
+3. **Facebook** → Copy → new post → paste → attach photo.
+4. **Instagram** → Copy → new post → paste in caption → attach photo or before/after Reel.
+5. **Blog** → Copy as HTML → paste into your website's blog editor → publish.
+
+### Why the content is what it is
+
+- **Google Business Profile**: skips emojis and leans on city + service keywords because Google ranks them like mini local-SEO landing pages.
+- **Facebook**: short captions (80-200 chars) and 1-2 hashtags — both correlate with the highest engagement on local pages.
+- **Instagram**: hook in the first line (before the "more" cutoff) so the post earns the tap; 5 mixed hashtags is the local small-business sweet spot.
+- **Blog**: the H1 contains the primary keyword + city; an early H2 is phrased as a question with a 40-60 word answer (the format Google AI Overviews and voice search pull); a final FAQ block adds two more answer-style sections. Keywords land naturally — you won't read it and feel stuffed.
+
+### Topic library (25 angles, rotates by day-of-year, biased to current season)
+
+House washing for curb appeal · Soft wash vs pressure wash · Driveway / concrete cleaning · Gutter cleaning (importance, seasonal) · Gutter brightening (the black streaks) · Mold and mildew removal · Vinyl and wood fence cleaning · Pool deck cleaning · Pre-listing wash · Spring refresh · Fall prep · Veteran / firefighter owned story · Commercial pressure washing · Oil stain removal · Roof soft washing · Algae prevention · Storm cleanup · Before & after · House + driveway bundle · Eco-friendly cleaning · Rust stain removal · Brick & stucco cleaning · Property managers / rentals · Free quote walkthrough · Annual maintenance schedule.
+
+### Files
+```
+content/
+  index.html       UI
+  app.js           Content engine (25 topics + per-platform generators)
+  style.css        Styles (self-contained)
+  manifest.json    Standalone PWA manifest
+  sw.js            Service worker (offline cache, scoped to /content/)
+  icons/icon.svg   App icon
 ```
 
-For more information about configuring front matter, see the [Jekyll frontmatter documentation](https://jekyllrb.com/docs/frontmatter/).
+---
 
-### :keyboard: Activity: Create a blog post
+## Quote Builder — `/`
 
-1. Browse to the `my-pages` branch.
-1. Click the `Add file` dropdown menu and then on `Create new file`.
-1. Name the file `_posts/YYYY-MM-DD-title.md`.
-1. Replace the `YYYY-MM-DD` with today's date, and change the `title` of your first blog post if you'd like.
-   > If you do edit the title, make sure there are hyphens between your words.
-   > If your blog post date doesn't follow the correct date convention, you'll receive an error and your site won't build. For more information, see "[Page build failed: Invalid post date](https://docs.github.com/en/pages/setting-up-a-github-pages-site-with-jekyll/troubleshooting-jekyll-build-errors-for-github-pages-sites)".
-1. Type the following content at the top of your blog post:
-   ```yaml
-   ---
-   title: "YOUR-TITLE"
-   date: YYYY-MM-DD
-   ---
-   ```
-1. Replace `YOUR-TITLE` with the title for your blog post.
-1. Replace `YYYY-MM-DD` with today's date.
-1. Type a quick draft of your blog post. Remember, you can always edit it later.
-1. Commit your changes to your branch.
-1. Wait about 20 seconds then refresh this page (the one you're following instructions from). [GitHub Actions](https://docs.github.com/en/actions) will automatically update to the next step.
-
-<footer>
-
-<!--
-  <<< Author notes: Footer >>>
-  Add a link to get support, GitHub status page, code of conduct, license link.
--->
+The original tool, untouched. Customer info → services → checklist → save / PDF / email. See `index.html`, `app.js`, `style.css`, `manifest.json`, `sw.js`.
 
 ---
 
-Get help: [Post in our discussion board](https://github.com/orgs/skills/discussions/categories/github-pages) &bull; [Review the GitHub status page](https://www.githubstatus.com/)
+## Install on Android
 
-&copy; 2023 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
+For either app: visit the URL in Chrome → menu (three dots) → **Add to Home screen** → **Install**. Each gets its own icon, its own offline cache, and its own update lifecycle.
 
-</footer>
+## License
+
+MIT.
