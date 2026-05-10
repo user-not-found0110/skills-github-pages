@@ -781,6 +781,18 @@
 
   // --- Init ---
   function init() {
+    // Check for handoff from pricing agent
+    try {
+      const handoff = JSON.parse(localStorage.getItem('splash_pw_agent_handoff'));
+      if (handoff && handoff.source === 'pricing-agent' && (Date.now() - handoff.timestamp) < 60000) {
+        localStorage.removeItem('splash_pw_agent_handoff');
+        populateForm(handoff);
+        showToast('Pre-filled from Pricing Agent');
+        switchTab('customer');
+        return;
+      }
+    } catch (e) { /* ignore */ }
+
     // Restore draft if available
     try {
       const draft = JSON.parse(localStorage.getItem(DRAFT_KEY));

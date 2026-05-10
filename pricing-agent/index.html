@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a4d8c">
+  <meta name="description" content="Splash Pricing Agent - AI-powered property pricing">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Price Agent">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="stylesheet" href="style.css">
+  <title>Splash Pricing Agent</title>
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-content">
+      <img src="icons/icon.svg" alt="" class="header-icon">
+      <div>
+        <h1>Splash Pressure Washing</h1>
+        <p class="header-sub">Pricing Agent</p>
+      </div>
+    </div>
+    <button id="installBtn" class="install-btn" style="display:none">Install App</button>
+  </header>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="alert"></div>
+
+  <!-- Tab Content -->
+  <main class="tab-content">
+
+    <!-- TAB 1: Property -->
+    <section id="tab-property" class="tab-panel active">
+      <h2 class="section-title">Property Lookup</h2>
+
+      <div id="noKeyWarning" class="no-key-warning" style="display:none">
+        No API key set. Go to <strong>Settings</strong> to add your Anthropic key.
+      </div>
+
+      <div class="card">
+        <div class="form-group">
+          <label for="propAddress">Property Address <span style="color:var(--error)">*</span></label>
+          <textarea id="propAddress" rows="2" placeholder="123 Oak Ridge Blvd, Chesapeake, VA 23322"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="propNotes">Additional Notes (optional)</label>
+          <textarea id="propNotes" rows="2" placeholder="e.g. 2-story brick colonial, large driveway, vinyl fence in backyard, heavy mold on north side..."></textarea>
+        </div>
+        <button id="analyzeBtn" class="btn-primary">Analyze Property</button>
+      </div>
+
+      <!-- Analysis status -->
+      <div id="analysisStatus" class="analysis-status" style="display:none">
+        <div class="status-spinner"></div>
+        <span id="statusText" class="status-text">Analyzing property...</span>
+      </div>
+
+      <!-- Property details (shown after analysis) -->
+      <div id="propertyDetailsCard" class="card" style="display:none">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <strong style="font-size:15px; color:var(--primary)">Property Details</strong>
+          <span id="confidenceBadge" class="confidence-badge"></span>
+        </div>
+
+        <div class="property-detail-row">
+          <span class="property-detail-label">Home Size</span>
+          <input type="number" id="det-sqft" style="width:110px; text-align:right" placeholder="sq ft">
+        </div>
+        <div class="property-detail-row">
+          <span class="property-detail-label">Stories</span>
+          <select id="det-stories" style="width:110px">
+            <option value="1">1 story</option>
+            <option value="1.5">1.5 stories</option>
+            <option value="2">2 stories</option>
+            <option value="3+">3+ stories</option>
+          </select>
+        </div>
+        <div class="property-detail-row">
+          <span class="property-detail-label">Siding Type</span>
+          <select id="det-siding" style="width:130px">
+            <option value="vinyl">Vinyl</option>
+            <option value="brick">Brick</option>
+            <option value="hardie">Hardie Board</option>
+            <option value="stucco">Stucco</option>
+            <option value="aluminum">Aluminum</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="property-detail-row">
+          <span class="property-detail-label">Driveway</span>
+          <select id="det-driveway" style="width:130px">
+            <option value="none">None</option>
+            <option value="1car">1-car</option>
+            <option value="2car">2-car</option>
+            <option value="4car">4-car / wide</option>
+            <option value="large">Large / custom</option>
+          </select>
+        </div>
+        <div class="property-detail-row">
+          <span class="property-detail-label">Gutters</span>
+          <div style="display:flex; align-items:center; gap:8px">
+            <input type="number" id="det-gutter-ft" style="width:70px; text-align:right" placeholder="lin ft">
+            <span style="font-size:12px; color:var(--text-sec)">ft</span>
+          </div>
+        </div>
+        <div class="property-detail-row">
+          <span class="property-detail-label">Vinyl Fence</span>
+          <div style="display:flex; align-items:center; gap:8px">
+            <input type="number" id="det-fence-ft" style="width:70px; text-align:right" placeholder="lin ft">
+            <span style="font-size:12px; color:var(--text-sec)">ft</span>
+          </div>
+        </div>
+        <div class="property-detail-row">
+          <span class="property-detail-label">Condition</span>
+          <select id="det-condition" style="width:130px">
+            <option value="good">Good</option>
+            <option value="fair">Fair / moderate</option>
+            <option value="heavy">Heavy soiling</option>
+          </select>
+        </div>
+
+        <div id="agentPropertyNotes" style="display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--border); font-size:13px; color:var(--text-sec); font-style:italic;"></div>
+
+        <button id="getPricingBtn" class="btn-primary">Get Pricing Recommendation</button>
+      </div>
+    </section>
+
+    <!-- TAB 2: Recommendation -->
+    <section id="tab-recommendation" class="tab-panel">
+      <div class="section-header">
+        <h2 class="section-title">Recommendation</h2>
+        <button id="startOverBtn" class="btn-secondary">Start Over</button>
+      </div>
+
+      <div id="recAddressCard" class="card" style="display:none">
+        <div style="font-size:13px; color:var(--text-sec); text-transform:uppercase; letter-spacing:0.4px; font-weight:600; margin-bottom:4px">Property</div>
+        <div id="recAddressText" style="font-size:15px; font-weight:600; color:var(--text)"></div>
+      </div>
+
+      <!-- Service recommendation cards rendered here -->
+      <div id="serviceRecommendations"></div>
+
+      <!-- Pricing summary -->
+      <div id="pricingSummary" class="card" style="display:none">
+        <strong style="font-size:14px; color:var(--primary); text-transform:uppercase; letter-spacing:0.5px;">Summary</strong>
+        <div id="summaryRows" style="margin-top:10px;"></div>
+        <div class="summary-total-row" style="margin-top:8px; padding-top:8px; border-top:2px solid var(--primary);">
+          <span class="summary-total-label">Recommended Total</span>
+          <span id="summaryTotal" class="summary-total-amount"></span>
+        </div>
+        <div id="rangeNote" style="font-size:12px; color:var(--text-sec); text-align:right; margin-top:4px;"></div>
+      </div>
+
+      <!-- Agent narrative -->
+      <div id="narrativeCard" class="card" style="display:none">
+        <strong style="font-size:14px; color:var(--primary); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:10px;">Agent Notes</strong>
+        <div id="narrativeText" class="agent-notes"></div>
+      </div>
+
+      <!-- Loading narrative -->
+      <div id="narrativeLoading" class="analysis-status" style="display:none">
+        <div class="status-spinner"></div>
+        <span class="status-text">Writing pricing notes...</span>
+      </div>
+
+      <button id="sendToQuoteBtn" class="btn-primary" style="display:none">Send to Quote Builder</button>
+    </section>
+
+    <!-- TAB 3: Chat -->
+    <section id="tab-chat" class="tab-panel">
+      <div class="section-header">
+        <h2 class="section-title">Chat</h2>
+        <button id="clearChatBtn" class="btn-secondary">Clear</button>
+      </div>
+      <div class="card">
+        <div id="chatMessages" class="chat-messages">
+          <div class="chat-msg assistant">
+            Hi! I'm your Splash PW pricing assistant. Ask me anything about pricing, properties, or pressure washing jobs in Hampton Roads.
+            <span class="msg-time">Now</span>
+          </div>
+        </div>
+        <div class="chat-input-row">
+          <textarea id="chatInput" placeholder="Ask about pricing, jobs, properties..." rows="1"></textarea>
+          <button id="chatSendBtn" class="chat-send-btn" title="Send">&#9650;</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: History -->
+    <section id="tab-history" class="tab-panel">
+      <div class="section-header">
+        <h2 class="section-title">History</h2>
+        <button id="clearHistoryBtn" class="btn-danger">Clear All</button>
+      </div>
+      <div id="historyList"></div>
+      <div id="historyEmpty" class="empty-msg" style="display:none">No saved analyses yet.</div>
+    </section>
+
+    <!-- TAB 5: Settings -->
+    <section id="tab-settings" class="tab-panel">
+      <h2 class="section-title">Settings</h2>
+
+      <div class="card">
+        <strong style="display:block; font-size:14px; color:var(--primary); margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px;">Anthropic API Key</strong>
+        <div class="settings-key-wrap">
+          <input type="password" id="apiKeyInput" placeholder="sk-ant-...">
+          <div class="key-actions">
+            <button class="key-save-btn" id="saveKeyBtn">Save</button>
+            <button class="key-clear-btn" id="clearKeyBtn">✕</button>
+          </div>
+        </div>
+        <div class="disclosure">Stored only in this browser's localStorage — never sent anywhere except Anthropic's API.</div>
+      </div>
+
+      <div class="card">
+        <strong style="display:block; font-size:14px; color:var(--primary); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">Base Rates</strong>
+        <p style="font-size:13px; color:var(--text-sec); margin-bottom:12px;">Edit your pricing. Changes save automatically.</p>
+
+        <div class="rate-row">
+          <span class="rate-label">House Wash (per sq ft)</span>
+          <div class="rate-input-wrap">
+            <span class="rate-symbol">$</span>
+            <input type="number" id="rate-houseWash" step="0.01" min="0">
+          </div>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Driveway — 1-car</span>
+          <div class="rate-input-wrap">
+            <span class="rate-symbol">$</span>
+            <input type="number" id="rate-drv1car" step="1" min="0">
+          </div>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Driveway — 2-car</span>
+          <div class="rate-input-wrap">
+            <span class="rate-symbol">$</span>
+            <input type="number" id="rate-drv2car" step="1" min="0">
+          </div>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Driveway — 4-car / wide</span>
+          <div class="rate-input-wrap">
+            <span class="rate-symbol">$</span>
+            <input type="number" id="rate-drv4car" step="1" min="0">
+          </div>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Driveway — large / custom</span>
+          <div class="rate-input-wrap">
+            <span class="rate-symbol">$</span>
+            <input type="number" id="rate-drvlarge" step="1" min="0">
+          </div>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Gutters — 1-story (per lin ft)</span>
+          <div class="rate-input-wrap">
+            <span class="rate-symbol">$</span>
+            <input type="number" id="rate-gut1" step="0.05" min="0">
+          </div>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Gutters — 2-story (per lin ft)</span>
+          <div class="rate-input-wrap">
+            <span class="rate-symbol">$</span>
+            <input type="number" id="rate-gut2" step="0.05" min="0">
+          </div>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Vinyl Fence (per lin ft)</span>
+          <div class="rate-input-wrap">
+            <span class="rate-symbol">$</span>
+            <input type="number" id="rate-fence" step="0.05" min="0">
+          </div>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Bundle discount (3+ services)</span>
+          <div class="rate-input-wrap" style="width:70px">
+            <input type="number" id="rate-bundle" step="1" min="0" max="50" style="padding-right:20px; padding-left:8px; text-align:right">
+            <span style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:14px; color:var(--primary); font-weight:700;">%</span>
+          </div>
+        </div>
+
+        <button id="resetRatesBtn" class="btn-secondary" style="margin-top:14px; width:100%">Reset to Defaults</button>
+      </div>
+
+      <div class="card">
+        <strong style="display:block; font-size:14px; color:var(--primary); margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px;">Other Apps</strong>
+        <a href="../index.html" style="display:block; padding:10px 0; font-size:14px; color:var(--primary-light); font-weight:600; text-decoration:none; border-bottom:1px solid var(--border);">&#8592; Quote Builder</a>
+        <a href="../content/index.html" style="display:block; padding:10px 0; font-size:14px; color:var(--primary-light); font-weight:600; text-decoration:none;">&#8592; Content Creator</a>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="property">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Property
+    </button>
+    <button class="nav-btn" data-tab="recommendation">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      Price
+    </button>
+    <button class="nav-btn" data-tab="chat">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      Chat
+    </button>
+    <button class="nav-btn" data-tab="history">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      History
+    </button>
+    <button class="nav-btn" data-tab="settings">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      Settings
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+</body>
+</html>
