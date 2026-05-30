@@ -72,9 +72,9 @@
     else if (rain >= 30)  score -= 30;
     else if (rain >= 15)  score -= 12;
 
-    if (temp < 32)        score -= 45;   // freezing — wash water freezes, unsafe
-    else if (temp < 40)   score -= 25;   // cold, surfaces won't dry
-    else if (temp < 50)   score -= 8;
+    if (temp < 32)        score -= 60;   // freezing — wash water freezes, unsafe
+    else if (temp < 40)   score -= 35;   // cold, surfaces won't dry
+    else if (temp < 50)   score -= 12;
     else if (temp > 95)   score -= 10;   // extreme heat, chemicals flash off
 
     if (wind >= 25)       score -= 25;   // overspray, hard to control
@@ -92,15 +92,15 @@
 
   function pickEmoji(sf) {
     const s = (sf || '').toLowerCase();
-    if (s.includes('thunder')) return '⛈️';                 // ⛈️
-    if (s.includes('rain') || s.includes('shower') || s.includes('drizzle')) return '🌧️'; // 🌧️
-    if (s.includes('snow') || s.includes('flurr')) return '❄️';   // ❄️
-    if (s.includes('sleet') || s.includes('ice')) return '🧊';    // 🧊
-    if (s.includes('fog') || s.includes('haze')) return '🌫️'; // 🌫️
-    if (s.includes('partly') || s.includes('mostly sunny')) return '⛅'; // ⛅
-    if (s.includes('cloud') || s.includes('overcast')) return '☁️'; // ☁️
-    if (s.includes('sunny') || s.includes('clear')) return '☀️';   // ☀️
-    return '⛅'; // ⛅ default
+    if (s.includes('thunder')) return '⛈️';
+    if (s.includes('rain') || s.includes('shower') || s.includes('drizzle')) return '🌧️';
+    if (s.includes('snow') || s.includes('flurr')) return '❄️';
+    if (s.includes('sleet') || s.includes('ice')) return '🧊';
+    if (s.includes('fog') || s.includes('haze')) return '🌫️';
+    if (s.includes('partly') || s.includes('mostly sunny')) return '⛅';
+    if (s.includes('cloud') || s.includes('overcast')) return '☁️';
+    if (s.includes('sunny') || s.includes('clear')) return '☀️';
+    return '⛅';
   }
 
   // ============ NETWORK ============
