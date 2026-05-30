@@ -178,9 +178,11 @@
           date: dateLabel(p.startTime),
           emoji: pickEmoji(p.shortForecast),
           forecast: p.shortForecast || '',
+          detail: p.detailedForecast || '',
           temp: temp,
           rain: rain == null ? 0 : rain,
           wind: wind,
+          storm: storm,
           score: score,
           bLabel: b.label,
           bCls: b.cls
@@ -191,6 +193,33 @@
   }
 
   // ============ RENDER ============
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  // Plain-English reasons behind a day's rating.
+  function reasons(d) {
+    const out = [];
+    if (d.storm) out.push('Thunderstorms in the forecast — not safe to run.');
+    if (d.rain >= 50)      out.push('Rain likely (' + d.rain + '% chance).');
+    else if (d.rain >= 30) out.push('Decent rain chance (' + d.rain + '%).');
+    else if (d.rain >= 15) out.push('Slight chance of showers (' + d.rain + '%).');
+    else                   out.push('Little to no rain expected (' + d.rain + '%).');
+
+    if (d.temp < 32)       out.push('Freezing (' + d.temp + '°F) — wash water can freeze.');
+    else if (d.temp < 40)  out.push('Cold (' + d.temp + '°F) — surfaces dry slowly.');
+    else if (d.temp < 50)  out.push('Cool (' + d.temp + '°F).');
+    else if (d.temp > 95)  out.push('Very hot (' + d.temp + '°F) — chemicals dry too fast.');
+
+    if (d.wind >= 25)      out.push('Strong wind (' + d.wind + ' mph) — heavy overspray.');
+    else if (d.wind >= 20) out.push('Windy (' + d.wind + ' mph) — some overspray.');
+    else if (d.wind >= 15) out.push('Breezy (' + d.wind + ' mph).');
+
+    return out;
+  }
+
   function summarize(days) {
     const great = days.filter(d => d.bCls === 'b-great')
       .sort((a, b) => b.score - a.score)
@@ -220,25 +249,39 @@
     summaryEl.style.display = 'block';
 
     // Day cards
-    dayList.innerHTML = data.days.map(d =>
-      '<div class="day-card ' + d.bCls + '">' +
-        '<div class="day-emoji">' + d.emoji + '</div>' +
-        '<div class="day-main">' +
-          '<div class="day-head">' +
-            '<span class="day-name">' + d.name + '</span>' +
-            '<span class="day-date">' + d.date + '</span>' +
+    dayList.innerHTML = data.days.map((d, i) => {
+      const why = reasons(d).map(r =>
+        '<li>' + escapeHtml(r) + '</li>').join('');
+      const detailPara = d.detail
+        ? '<p class="detail-forecast">' + escapeHtml(d.detail) + '</p>'
+        : '';
+      return '' +
+      '<div class="day-card ' + d.bCls + '" data-day="' + i + '" role="button" tabindex="0" aria-expanded="false">' +
+        '<div class="day-summary">' +
+          '<div class="day-emoji">' + d.emoji + '</div>' +
+          '<div class="day-main">' +
+            '<div class="day-head">' +
+              '<span class="day-name">' + escapeHtml(d.name) + '</span>' +
+              '<span class="day-date">' + escapeHtml(d.date) + '</span>' +
+            '</div>' +
+            '<div class="day-forecast">' + escapeHtml(d.forecast) + '</div>' +
+            '<div class="day-stats">' +
+              '<span>🌡️ ' + d.temp + '°F</span>' +
+              '<span>🌧️ ' + d.rain + '%</span>' +
+              '<span>💨 ' + d.wind + ' mph</span>' +
+            '</div>' +
           '</div>' +
-          '<div class="day-forecast">' + d.forecast + '</div>' +
-          '<div class="day-stats">' +
-            '<span>🌡️ ' + d.temp + '°F</span>' +
-            '<span>🌧️ ' + d.rain + '%</span>' +
-            '<span>💨 ' + d.wind + ' mph</span>' +
-          '</div>' +
+          '<span class="badge ' + d.bCls + '">' + d.bLabel + '</span>' +
+          '<span class="day-chevron" aria-hidden="true">⌄</span>' +
         '</div>' +
-        '<span class="badge ' + d.bCls + '">' + d.bLabel + '</span>' +
-      '</div>'
-    ).join('') +
-    '<p class="foot-note">Forecast: U.S. National Weather Service. Scores weigh rain, temperature, and wind.</p>';
+        '<div class="day-detail">' +
+          '<div class="detail-why-label">Why ' + d.bLabel + '</div>' +
+          '<ul class="detail-why">' + why + '</ul>' +
+          detailPara +
+        '</div>' +
+      '</div>';
+    }).join('') +
+    '<p class="foot-note">Forecast: U.S. National Weather Service. Tap a day for details. Scores weigh rain, temperature, and wind.</p>';
   }
 
   // ============ MAIN FLOW ============
@@ -291,6 +334,22 @@
   }
 
   // ============ EVENTS ============
+  function toggleCard(card) {
+    if (!card) return;
+    const open = card.classList.toggle('expanded');
+    card.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  // Tap (or keyboard Enter/Space) a day card to expand its detail.
+  dayList.addEventListener('click', e => {
+    toggleCard(e.target.closest('.day-card'));
+  });
+  dayList.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const card = e.target.closest('.day-card');
+      if (card) { e.preventDefault(); toggleCard(card); }
+    }
+  });
+
   checkBtn.addEventListener('click', () => runLookup(locInput.value));
   locInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); runLookup(locInput.value); }
