@@ -1,0 +1,25 @@
+{
+  "name": "Splash Wash Window",
+  "short_name": "Wash Window",
+  "description": "Find the best days this week to schedule pressure-washing jobs based on local weather.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a4d8c",
+  "theme_color": "#0a4d8c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

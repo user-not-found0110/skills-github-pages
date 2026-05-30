@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a4d8c">
+  <meta name="description" content="Splash Pressure Washing - Best days this week to schedule washes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Wash Window">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="stylesheet" href="style.css">
+  <title>Splash PW - Wash Window</title>
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-content">
+      <img src="icons/icon.svg" alt="" class="header-icon">
+      <div>
+        <h1>Wash Window</h1>
+        <p class="header-sub">Best days this week to book washes</p>
+      </div>
+    </div>
+    <button id="installBtn" class="install-btn" style="display:none">Install App</button>
+  </header>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="alert"></div>
+
+  <main class="page">
+
+    <!-- Location input -->
+    <div class="card">
+      <div class="form-group">
+        <label for="locInput">Location</label>
+        <input type="text" id="locInput" inputmode="text" autocomplete="postal-code"
+               placeholder="ZIP or city, e.g. 23320">
+      </div>
+      <button id="checkBtn" class="btn-primary">Check Forecast</button>
+    </div>
+
+    <!-- Status line -->
+    <div id="statusLine" class="status-line" style="display:none">
+      <span id="statusLoc" class="status-loc"></span>
+      <span class="status-right">
+        <span id="statusAge" class="status-age"></span>
+        <button id="refreshBtn" class="btn-secondary" type="button">Refresh</button>
+      </span>
+    </div>
+
+    <!-- Message / loading / error region -->
+    <div id="message" class="message" style="display:none"></div>
+
+    <!-- Best-days summary -->
+    <div id="summary" class="summary-card" style="display:none"></div>
+
+    <!-- Day list -->
+    <div id="dayList" class="day-list"></div>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
