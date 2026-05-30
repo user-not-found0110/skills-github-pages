@@ -70,7 +70,7 @@
     if (rain >= 70)       score -= 70;
     else if (rain >= 50)  score -= 50;
     else if (rain >= 30)  score -= 30;
-    else if (rain >= 15)  score -= 12;
+    else if (rain >= 15)  score -= 28;   // slight chance of showers — drop out of "Great"
 
     if (temp < 32)        score -= 60;   // freezing — wash water freezes, unsafe
     else if (temp < 40)   score -= 35;   // cold, surfaces won't dry
