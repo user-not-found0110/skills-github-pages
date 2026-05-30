@@ -138,12 +138,46 @@ input[type="text"]:focus {
 .day-list { display: flex; flex-direction: column; gap: 10px; }
 .day-card {
   background: var(--surface); border: 1px solid var(--border); border-left: 5px solid var(--border);
-  border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow);
-  display: flex; align-items: center; gap: 14px;
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  cursor: pointer; -webkit-tap-highlight-color: transparent; overflow: hidden;
+  transition: border-color 0.15s;
 }
+.day-card:focus-visible { outline: 2px solid var(--primary-light); outline-offset: 2px; }
 .day-card.b-great { border-left-color: var(--success); }
 .day-card.b-ok    { border-left-color: var(--warn); }
 .day-card.b-skip  { border-left-color: var(--error); }
+
+.day-summary { display: flex; align-items: center; gap: 14px; padding: 14px; }
+
+/* Chevron + expanding detail */
+.day-chevron {
+  flex-shrink: 0; font-size: 20px; line-height: 1; color: var(--text-sec);
+  transition: transform 0.2s; align-self: center;
+}
+.day-card.expanded .day-chevron { transform: rotate(180deg); }
+.day-detail {
+  max-height: 0; overflow: hidden; transition: max-height 0.3s ease;
+  padding: 0 14px; border-top: 0 solid var(--border);
+}
+.day-card.expanded .day-detail {
+  max-height: 480px; padding: 12px 14px 16px; border-top: 1px solid var(--border);
+}
+.detail-why-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--primary); margin-bottom: 6px;
+}
+.detail-why { list-style: none; margin: 0 0 4px; padding: 0; }
+.detail-why li {
+  font-size: 13px; color: var(--text); line-height: 1.45; padding: 2px 0 2px 16px;
+  position: relative;
+}
+.detail-why li::before {
+  content: '•'; position: absolute; left: 2px; color: var(--text-sec);
+}
+.detail-forecast {
+  font-size: 13px; color: var(--text-sec); line-height: 1.5; margin-top: 8px;
+  padding-top: 8px; border-top: 1px dashed var(--border);
+}
 
 .day-emoji { font-size: 34px; line-height: 1; flex-shrink: 0; width: 40px; text-align: center; }
 .day-main { flex: 1; min-width: 0; }
