@@ -63,12 +63,12 @@
   }
 
   // 0-100 wash score. Rain dominates; cold/freezing and high wind penalized.
-  function washScore(rain, temp, wind) {
+  // `storm` (thunderstorms in the forecast) is a hard no — can't safely run in lightning.
+  function washScore(rain, temp, wind, storm) {
     let score = 100;
     if (rain == null) rain = 0;
 
-    if (rain >= 70)       score -= 70;
-    else if (rain >= 50)  score -= 50;
+    if (rain >= 50)       score -= 70;   // more likely than not — Skip
     else if (rain >= 30)  score -= 30;
     else if (rain >= 15)  score -= 28;   // slight chance of showers — drop out of "Great"
 
@@ -81,7 +81,9 @@
     else if (wind >= 20)  score -= 15;
     else if (wind >= 15)  score -= 8;
 
-    return Math.max(0, Math.min(100, Math.round(score)));
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    if (storm) score = Math.min(score, 20);   // thunderstorms: force Skip
+    return score;
   }
 
   function bucket(score) {
@@ -168,7 +170,8 @@
         const rain = p.probabilityOfPrecipitation ? p.probabilityOfPrecipitation.value : null;
         const wind = parseWindMax(p.windSpeed);
         const temp = p.temperature;
-        const score = washScore(rain, temp, wind);
+        const storm = /thunder|t-storm|tstorm/i.test(p.shortForecast || '');
+        const score = washScore(rain, temp, wind, storm);
         const b = bucket(score);
         return {
           name: dayLabel(p.startTime),
