@@ -18,6 +18,9 @@
   const LS_LOCATION = 'splash_ww_last_location';
   const LS_FORECAST = 'splash_ww_forecast';
 
+  // Currently rendered forecast (so tap handlers can reach hourlyUrl + cache).
+  let currentData = null;
+
   // ============ HELPERS ============
   function showToast(msg) {
     toastEl.textContent = msg;
@@ -160,6 +163,7 @@
     const pts = await getJson(
       'https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4));
     const fcUrl = pts.properties && pts.properties.forecast;
+    const hourlyUrl = (pts.properties && pts.properties.forecastHourly) || null;
     if (!fcUrl) throw new Error('No forecast available for that location.');
     const fc = await getJson(fcUrl);
     const periods = (fc.properties && fc.properties.periods) || [];
@@ -176,6 +180,7 @@
         return {
           name: dayLabel(p.startTime),
           date: dateLabel(p.startTime),
+          dateKey: new Date(p.startTime).toDateString(),
           emoji: pickEmoji(p.shortForecast),
           forecast: p.shortForecast || '',
           detail: p.detailedForecast || '',
@@ -189,7 +194,7 @@
         };
       });
     if (!days.length) throw new Error('No forecast available for that location.');
-    return days;
+    return { days: days, hourlyUrl: hourlyUrl };
   }
 
   // ============ RENDER ============
@@ -220,6 +225,111 @@
     return out;
   }
 
+  // ---- Hourly ----
+  function hourLabel(iso) {
+    const h = new Date(iso).getHours();
+    const ampm = h < 12 ? 'a' : 'p';
+    let hr = h % 12; if (hr === 0) hr = 12;
+    return hr + ampm;
+  }
+
+  // Is a single hour OK to wash? (dry-ish, mild, not stormy, not too windy)
+  function hourGood(h) {
+    return !h.storm && h.rain < 15 && h.temp >= 50 && h.temp <= 95 && h.wind < 20;
+  }
+
+  // Trim the NWS hourly feed to one day's 24 hours, scored for wash-ability.
+  function hoursForDay(rawPeriods, dateKey) {
+    return (rawPeriods || [])
+      .filter(p => new Date(p.startTime).toDateString() === dateKey)
+      .map(p => {
+        const rain = p.probabilityOfPrecipitation ? p.probabilityOfPrecipitation.value : null;
+        return {
+          label: hourLabel(p.startTime),
+          temp: p.temperature,
+          rain: rain == null ? 0 : rain,
+          wind: parseWindMax(p.windSpeed),
+          storm: /thunder|t-storm|tstorm/i.test(p.shortForecast || ''),
+          forecast: p.shortForecast || ''
+        };
+      });
+  }
+
+  // Find the longest run of consecutive good hours; return a label or null.
+  function dryWindow(hours) {
+    let bestStart = -1, bestLen = 0, curStart = -1, curLen = 0;
+    for (let i = 0; i < hours.length; i++) {
+      if (hourGood(hours[i])) {
+        if (curLen === 0) curStart = i;
+        curLen++;
+        if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
+      } else {
+        curLen = 0;
+      }
+    }
+    if (bestLen < 2) return null;   // need at least a 2-hour stretch to bother
+    const startH = hours[bestStart].label;
+    // End label = start of the hour after the window (so "8a-12p" reads cleanly).
+    const endIdx = bestStart + bestLen;
+    const endH = endIdx < hours.length ? hours[endIdx].label : hours[hours.length - 1].label;
+    return startH + '–' + endH;
+  }
+
+  // Lazily fetch + cache one day's hourly data, then re-render that card's strip.
+  async function loadHourly(dayIndex) {
+    if (!currentData || !currentData.hourlyUrl) return;
+    const day = currentData.days[dayIndex];
+    if (!day) return;
+    if (!currentData.hourly) currentData.hourly = {};
+    if (currentData.hourly[day.dateKey]) return;   // already have it
+
+    const slot = document.querySelector('.day-hourly[data-day="' + dayIndex + '"]');
+    if (slot) slot.innerHTML = '<div class="hourly-loading"><span class="spinner"></span>Loading hourly…</div>';
+
+    try {
+      const raw = await getJson(currentData.hourlyUrl);
+      const periods = (raw.properties && raw.properties.periods) || [];
+      // Cache every visible day we got, so opening neighbors is instant + offline.
+      currentData.days.forEach(d => {
+        if (!currentData.hourly[d.dateKey]) {
+          const hrs = hoursForDay(periods, d.dateKey);
+          if (hrs.length) currentData.hourly[d.dateKey] = hrs;
+        }
+      });
+      saveCache(currentData);
+    } catch (e) {
+      if (slot) slot.innerHTML = '<div class="hourly-error">Hourly forecast unavailable right now.</div>';
+      return;
+    }
+    renderHourly(dayIndex);
+  }
+
+  function renderHourly(dayIndex) {
+    const day = currentData && currentData.days[dayIndex];
+    const slot = document.querySelector('.day-hourly[data-day="' + dayIndex + '"]');
+    if (!day || !slot) return;
+    const hours = currentData.hourly && currentData.hourly[day.dateKey];
+    if (!hours || !hours.length) {
+      slot.innerHTML = '<div class="hourly-error">No hourly data for this day.</div>';
+      return;
+    }
+    const win = dryWindow(hours);
+    const winHtml = win
+      ? '<div class="dry-window">✅ Good window: ' + escapeHtml(win) + '</div>'
+      : '<div class="dry-window none">No clear wash window this day.</div>';
+    const cells = hours.map(h =>
+      '<div class="hour-cell' + (hourGood(h) ? ' good' : '') + '">' +
+        '<span class="hour-time">' + escapeHtml(h.label) + '</span>' +
+        '<span class="hour-temp">' + h.temp + '°</span>' +
+        '<span class="hour-rain">' + (h.storm ? '⛈️' : '🌧️') + h.rain + '%</span>' +
+        '<span class="hour-wind">💨' + h.wind + '</span>' +
+      '</div>'
+    ).join('');
+    slot.innerHTML = winHtml +
+      '<div class="hourly-label">Hour by hour</div>' +
+      '<div class="hour-strip">' + cells + '</div>';
+  }
+
   function summarize(days) {
     const great = days.filter(d => d.bCls === 'b-great')
       .sort((a, b) => b.score - a.score)
@@ -236,6 +346,7 @@
   }
 
   function render(data) {
+    currentData = data;
     // Status line
     statusLoc.textContent = data.locName;
     statusAge.textContent = 'Updated ' + timeAgo(data.savedAt);
@@ -278,6 +389,7 @@
           '<div class="detail-why-label">Why ' + d.bLabel + '</div>' +
           '<ul class="detail-why">' + why + '</ul>' +
           detailPara +
+          '<div class="day-hourly" data-day="' + i + '"></div>' +
         '</div>' +
       '</div>';
     }).join('') +
@@ -300,11 +412,14 @@
         showMessage("Couldn't find that location. Try a ZIP like 23320 or \"Chesapeake, VA\".", true);
         return;
       }
-      const days = await fetchForecast(geo.lat, geo.lon);
+      const fc = await fetchForecast(geo.lat, geo.lon);
 
-      const data = { savedAt: Date.now(), locName: geo.name, days: days };
+      const data = {
+        savedAt: Date.now(), locName: geo.name,
+        days: fc.days, hourlyUrl: fc.hourlyUrl, hourly: {}
+      };
       localStorage.setItem(LS_LOCATION, q);
-      localStorage.setItem(LS_FORECAST, JSON.stringify(data));
+      saveCache(data);
 
       clearMessage();
       render(data);
@@ -332,12 +447,24 @@
       return raw ? JSON.parse(raw) : null;
     } catch (e) { return null; }
   }
+  function saveCache(data) {
+    try {
+      localStorage.setItem(LS_FORECAST, JSON.stringify(data));
+    } catch (e) { /* quota — non-fatal, app still works in-session */ }
+  }
 
   // ============ EVENTS ============
   function toggleCard(card) {
     if (!card) return;
     const open = card.classList.toggle('expanded');
     card.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      const idx = parseInt(card.getAttribute('data-day'), 10);
+      const day = currentData && currentData.days[idx];
+      const have = day && currentData.hourly && currentData.hourly[day.dateKey];
+      if (have) renderHourly(idx);   // cached (incl. offline) — show instantly
+      else loadHourly(idx);          // fetch lazily on first open
+    }
   }
   // Tap (or keyboard Enter/Space) a day card to expand its detail.
   dayList.addEventListener('click', e => {
