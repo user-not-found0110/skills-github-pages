@@ -26,6 +26,11 @@
 *.sql
 *.sqlite
 
+# Google Ads API credentials #
+##############################
+google-ads/google-ads.yaml
+client_secret*.json
+
 # OS generated files #
 ######################
 .DS_Store
