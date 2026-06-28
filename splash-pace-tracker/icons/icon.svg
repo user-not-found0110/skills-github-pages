@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#122231"/>
+      <stop offset="100%" stop-color="#0B1722"/>
+    </linearGradient>
+    <linearGradient id="drop" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#46D2F2"/>
+      <stop offset="100%" stop-color="#1486AC"/>
+    </linearGradient>
+    <linearGradient id="arc" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1486AC"/>
+      <stop offset="100%" stop-color="#46D2F2"/>
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="256" fill="url(#bg)"/>
+  <!-- Gauge arc track -->
+  <path d="M96 340 A180 180 0 0 1 416 340" fill="none" stroke="#1E3447" stroke-width="28" stroke-linecap="round"/>
+  <!-- Gauge arc fill (~70%) -->
+  <path d="M96 340 A180 180 0 0 1 370 200" fill="none" stroke="url(#arc)" stroke-width="28" stroke-linecap="round"/>
+  <!-- Water drop -->
+  <path d="M256 148 C256 148 196 228 196 284 a60 60 0 0 0 120 0 c0-56-60-136-60-136Z" fill="url(#drop)"/>
+</svg>

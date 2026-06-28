@@ -1,0 +1,25 @@
+{
+  "name": "Splash Pace Gauge",
+  "short_name": "Pace Gauge",
+  "description": "Track year-to-date revenue against seasonal targets for Splash Pressure Washing.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0B1722",
+  "theme_color": "#0B1722",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

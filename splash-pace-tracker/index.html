@@ -6,6 +6,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0B1722">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="apple-touch-icon" href="icons/icon.svg">
 <title>Splash — Pace Gauge</title>
 <style>
   :root{
@@ -424,7 +427,7 @@
   function pace(){
     var exp=0, got=0;
     for(var m=1;m<CUR_M;m++){ exp+=target(m); got+=earned(m); }
-    var diff = got-exp;                       // + ahead / - behind, measured through last completed month
+    var diff = got-exp;
     var behind = Math.max(0,-diff);
     var remPeak = PEAK.filter(function(x){return x>=CUR_M;});
     var per = (behind>0 && remPeak.length>0) ? behind/remPeak.length : 0;
@@ -475,7 +478,6 @@
       tx.textContent = val>=1000 ? "$"+Math.round(val/1000)+"k" : "$"+Math.round(val);
       g.appendChild(tx);
     }
-    // redline tick at 100%
     var ro=ptArc(1,R+9), ri=ptArc(1,R-9), rl=document.getElementById("redlineTick");
     rl.setAttribute("x1",ro.x.toFixed(1));rl.setAttribute("y1",ro.y.toFixed(1));
     rl.setAttribute("x2",ri.x.toFixed(1));rl.setAttribute("y2",ri.y.toFixed(1));
@@ -501,17 +503,14 @@
     buildScale();
     setPaceTick();
     var frac = state.goal>0 ? Math.min(1, ytd/state.goal) : 0;
-    // animate fill
     requestAnimationFrame(function(){
       requestAnimationFrame(function(){ arcVal.style.strokeDashoffset = (ARC_LEN*(1-frac)).toFixed(2); });
     });
 
-    // pace chip
     var p = pace();
     var chip = document.getElementById("paceChip");
     var txt = document.getElementById("paceTxt");
     chip.className = "pace-chip ";
-    var inner = "";
     if(!p.hasCompleted){
       chip.className += "pace-flat";
       txt.innerHTML = "Season just getting started";
@@ -548,12 +547,10 @@
     if(got>=adj && adj>0){ fill.style.background="linear-gradient(90deg,#1f9e6f,#36D399)"; }
     else { fill.style.background="linear-gradient(90deg,#1486AC,#2BB7E6)"; }
 
-    // hint
     var hint = document.getElementById("mcHint");
     if(selM===CUR_M) hint.textContent = "";
     else hint.textContent = (selM<CUR_M?"past":"upcoming");
 
-    // catch-up note
     var cn = document.getElementById("catchNote");
     var extra = adj - base;
     if(extra > 0.5){
@@ -704,7 +701,6 @@
       var amt=parseFloat(raw);
       if(isNaN(amt)||amt<0) continue;
       var m=parseInt(inputs[i].getAttribute("data-m"),10);
-      // remove all existing entries for this month/year, then insert one backfill entry
       state.jobs=state.jobs.filter(function(j){return !(j.m===m&&j.y===CUR_Y);});
       state.jobs.push({id:Date.now()+"_bf_"+m+"_"+Math.floor(Math.random()*9999),amt:amt,m:m,y:CUR_Y,ts:Date.now(),src:"backfill"});
     }
@@ -716,5 +712,6 @@
   renderAll();
 })();
 </script>
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(function(){});}</script>
 </body>
 </html>

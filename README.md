@@ -7,6 +7,7 @@ Two separate, installable mobile-first apps for [Splash Pressure Washing](https:
 | **Quote Builder** | `/` | Build, save, and PDF customer quotes from your phone. |
 | **Content Creator** | `/content/` | Generate daily Google / Facebook / Instagram / blog posts. |
 | **Wash Window** | `/wash-window/` | Check this week's forecast and flag the best days to schedule washes (no rain-outs). |
+| **Pace Gauge** | `/splash-pace-tracker/` | Track year-to-date revenue against seasonal targets. |
 
 Each app installs as its own Android home-screen icon with its own name. They share nothing at runtime — separate manifests, separate service workers, separate localStorage. You can install one, both, or neither.
 
