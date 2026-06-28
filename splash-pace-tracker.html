@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0B1722">
+<title>Splash — Pace Gauge</title>
+<style>
+  :root{
+    --panel:#0B1722;
+    --panel-raised:#122231;
+    --panel-line:#1E3447;
+    --ink:#EAF2F8;
+    --mute:#7392A8;
+    --water:#2BB7E6;
+    --water-deep:#1486AC;
+    --redline:#FF5A3C;
+    --onpace:#36D399;
+    --amber:#F5B544;
+    --r:16px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(120% 80% at 50% -10%, #14293B 0%, var(--panel) 55%) fixed,
+      var(--panel);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+    font-variant-numeric:tabular-nums;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + 24px) env(safe-area-inset-left);
+  }
+  .wrap{max-width:460px;margin:0 auto;padding:18px 16px 0;}
+
+  /* ---- masthead ---- */
+  .mast{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .brand{display:flex;align-items:center;gap:9px;}
+  .brand-mark{
+    width:30px;height:30px;border-radius:8px;flex:none;
+    background:linear-gradient(150deg,var(--water),var(--water-deep));
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 0 0 1px rgba(43,183,230,.35),0 6px 16px -6px rgba(43,183,230,.6);
+  }
+  .brand-mark svg{width:17px;height:17px;display:block;}
+  .brand-name{font-weight:800;letter-spacing:.16em;font-size:13px;}
+  .brand-sub{font-size:9px;letter-spacing:.22em;color:var(--mute);text-transform:uppercase;margin-top:1px;}
+  .season-tag{
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+    font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--mute);border:1px solid var(--panel-line);
+    padding:5px 9px;border-radius:999px;display:flex;align-items:center;gap:6px;
+  }
+  .season-dot{width:6px;height:6px;border-radius:50%;background:var(--water);box-shadow:0 0 8px var(--water);}
+
+  /* ---- gauge card ---- */
+  .gauge-card{
+    background:linear-gradient(180deg,var(--panel-raised),#0E1C29);
+    border:1px solid var(--panel-line);border-radius:var(--r);
+    padding:14px 14px 18px;position:relative;overflow:hidden;
+    box-shadow:0 18px 40px -22px #000, inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  .gauge-wrap{position:relative;width:100%;}
+  svg.gauge{display:block;width:100%;height:auto;overflow:visible;}
+  .arc-track{fill:none;stroke:#0A1722;stroke-width:15;stroke-linecap:round;}
+  .arc-val{fill:none;stroke:url(#fluid);stroke-width:15;stroke-linecap:round;
+    transition:stroke-dashoffset 1.25s cubic-bezier(.16,.84,.34,1);}
+  .tick-min{stroke:var(--panel-line);stroke-width:2;}
+  .tick-lbl{fill:var(--mute);font-size:8.5px;font-family:ui-monospace,"SF Mono",Menlo,monospace;letter-spacing:.04em;}
+  .pace-tick{stroke-width:3;stroke-linecap:round;}
+  .redline-tick{stroke:var(--redline);stroke-width:3;stroke-linecap:round;}
+
+  .gauge-center{
+    position:absolute;left:0;right:0;bottom:6%;
+    display:flex;flex-direction:column;align-items:center;text-align:center;
+  }
+  .earned{font-size:42px;font-weight:800;letter-spacing:-.02em;line-height:1;}
+  .earned .cents{font-size:.5em;font-weight:700;color:var(--mute);margin-left:1px;}
+  .goal-line{font-size:12px;color:var(--mute);margin-top:5px;letter-spacing:.01em;}
+  .goal-line b{color:var(--ink);font-weight:700;}
+
+  .pace-chip{
+    margin:14px auto 0;display:inline-flex;align-items:center;gap:8px;
+    font-size:12.5px;font-weight:600;padding:8px 13px;border-radius:999px;
+    border:1px solid;max-width:100%;
+  }
+  .pace-chip .pico{width:8px;height:8px;border-radius:50%;flex:none;}
+  .pace-chip small{font-weight:500;opacity:.82;}
+  .pace-ahead{color:var(--onpace);border-color:rgba(54,211,153,.35);background:rgba(54,211,153,.08);}
+  .pace-ahead .pico{background:var(--onpace);}
+  .pace-behind{color:var(--amber);border-color:rgba(245,181,68,.35);background:rgba(245,181,68,.08);}
+  .pace-behind .pico{background:var(--amber);}
+  .pace-flat{color:var(--mute);border-color:var(--panel-line);background:transparent;}
+  .pace-flat .pico{background:var(--mute);}
+
+  /* ---- section label ---- */
+  .sec-label{
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+    font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute);
+    margin:22px 4px 9px;display:flex;align-items:center;justify-content:space-between;
+  }
+  .sec-label .hint{letter-spacing:.04em;text-transform:none;font-size:10px;color:var(--mute);opacity:.8;}
+
+  /* ---- month card ---- */
+  .month-card{
+    background:var(--panel-raised);border:1px solid var(--panel-line);border-radius:var(--r);
+    padding:15px 15px 16px;
+  }
+  .mc-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:13px;}
+  .mc-name{font-size:18px;font-weight:800;letter-spacing:-.01em;}
+  .mc-name .yr{color:var(--mute);font-weight:600;font-size:13px;margin-left:6px;}
+  .mc-peak{
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:9px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--water);border:1px solid rgba(43,183,230,.4);
+    padding:3px 7px;border-radius:999px;
+  }
+  .mc-bar{height:9px;border-radius:6px;background:#0A1722;overflow:hidden;position:relative;border:1px solid #0A1722;}
+  .mc-bar-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--water-deep),var(--water));
+    transition:width .6s cubic-bezier(.16,.84,.34,1);}
+  .mc-stats{display:flex;justify-content:space-between;margin-top:11px;gap:10px;}
+  .stat{flex:1;}
+  .stat .k{font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--mute);margin-bottom:3px;}
+  .stat .v{font-size:16px;font-weight:700;}
+  .stat .v.sm{font-size:14px;}
+  .stat.right{text-align:right;}
+  .catchup-note{
+    margin-top:11px;font-size:11.5px;color:var(--amber);
+    background:rgba(245,181,68,.07);border:1px solid rgba(245,181,68,.22);
+    border-radius:10px;padding:8px 10px;line-height:1.45;
+  }
+  .catchup-note b{font-weight:700;}
+
+  /* ---- log row ---- */
+  .log-row{display:flex;gap:9px;margin-top:14px;}
+  .log-input{
+    flex:1;display:flex;align-items:center;background:#0A1722;border:1px solid var(--panel-line);
+    border-radius:11px;padding:0 12px;
+  }
+  .log-input span{color:var(--mute);font-weight:700;font-size:17px;}
+  .log-input input{
+    flex:1;background:none;border:none;outline:none;color:var(--ink);
+    font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;
+    padding:13px 6px;width:100%;font-family:inherit;
+  }
+  .log-input input::placeholder{color:var(--mute);font-weight:600;}
+  button{font-family:inherit;cursor:pointer;border:none;}
+  .btn-add{
+    background:linear-gradient(150deg,var(--water),var(--water-deep));color:#04222E;
+    font-weight:800;font-size:15px;border-radius:11px;padding:0 18px;min-width:62px;
+    box-shadow:0 8px 18px -8px rgba(43,183,230,.7);
+  }
+  .btn-add:active{transform:translateY(1px);}
+  .btn-quick{
+    width:100%;margin-top:9px;background:transparent;border:1px dashed var(--panel-line);
+    color:var(--water);font-weight:700;font-size:13.5px;border-radius:11px;padding:11px;
+    display:flex;align-items:center;justify-content:center;gap:7px;
+  }
+  .btn-quick:active{background:rgba(43,183,230,.06);}
+
+  .jobs{margin-top:15px;}
+  .jobs-empty{font-size:12.5px;color:var(--mute);text-align:center;padding:8px 0 2px;line-height:1.5;}
+  .job{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 0;border-top:1px solid var(--panel-line);
+  }
+  .job:first-child{border-top:none;}
+  .job-amt{font-weight:700;font-size:15px;}
+  .job-meta{font-size:11px;color:var(--mute);margin-top:1px;}
+  .job-del{
+    background:none;color:var(--mute);font-size:18px;line-height:1;padding:6px 8px;
+    border-radius:8px;flex:none;
+  }
+  .job-del:active{background:rgba(255,90,60,.12);color:var(--redline);}
+  .jobs-more{font-size:11px;color:var(--mute);text-align:center;padding-top:9px;}
+
+  /* ---- season strip ---- */
+  .season-card{
+    background:var(--panel-raised);border:1px solid var(--panel-line);border-radius:var(--r);
+    padding:16px 12px 12px;
+  }
+  .bars{display:flex;align-items:flex-end;gap:4px;height:118px;}
+  .bcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;height:100%;justify-content:flex-end;}
+  .btrack{
+    width:100%;max-width:24px;border-radius:5px 5px 3px 3px;position:relative;
+    background:#0A1722;display:flex;align-items:flex-end;overflow:hidden;
+    transition:box-shadow .2s;
+  }
+  .bfill{width:100%;border-radius:0 0 3px 3px;background:linear-gradient(180deg,var(--water),var(--water-deep));transition:height .5s cubic-bezier(.16,.84,.34,1);}
+  .bcol.peak .btrack{background:#0d2230;}
+  .bcol.sel .btrack{box-shadow:0 0 0 2px var(--water),0 0 14px -2px var(--water);}
+  .bcol.met .bfill{background:linear-gradient(180deg,var(--onpace),#1f9e6f);}
+  .blabel{font-size:9px;letter-spacing:.02em;color:var(--mute);font-family:ui-monospace,"SF Mono",Menlo,monospace;}
+  .bcol.sel .blabel{color:var(--ink);font-weight:700;}
+  .bcol.now .blabel{color:var(--water);}
+  .season-legend{display:flex;gap:16px;justify-content:center;margin-top:13px;font-size:10px;color:var(--mute);}
+  .lg{display:flex;align-items:center;gap:6px;}
+  .lg i{width:9px;height:9px;border-radius:3px;display:inline-block;}
+  .lg .i-peak{background:#0d2230;border:1px solid var(--water);}
+  .lg .i-met{background:var(--onpace);}
+  .lg .i-prog{background:var(--water);}
+
+  /* ---- settings ---- */
+  details.settings{margin-top:20px;border:1px solid var(--panel-line);border-radius:var(--r);overflow:hidden;background:var(--panel-raised);}
+  details.settings summary{
+    list-style:none;cursor:pointer;padding:14px 16px;font-size:13px;font-weight:700;
+    display:flex;align-items:center;justify-content:space-between;color:var(--ink);
+  }
+  details.settings summary::-webkit-details-marker{display:none;}
+  .sum-chev{color:var(--mute);transition:transform .2s;font-size:12px;}
+  details.settings[open] .sum-chev{transform:rotate(180deg);}
+  .set-body{padding:4px 16px 18px;border-top:1px solid var(--panel-line);}
+  .set-field{margin-top:15px;}
+  .set-field label{display:block;font-size:11px;letter-spacing:.03em;text-transform:uppercase;color:var(--mute);margin-bottom:7px;}
+  .set-input{display:flex;align-items:center;background:#0A1722;border:1px solid var(--panel-line);border-radius:10px;padding:0 12px;}
+  .set-input span{color:var(--mute);font-weight:700;}
+  .set-input input{flex:1;background:none;border:none;outline:none;color:var(--ink);font-size:16px;font-weight:700;padding:12px 6px;font-family:inherit;font-variant-numeric:tabular-nums;}
+  .set-help{font-size:11px;color:var(--mute);margin-top:7px;line-height:1.5;}
+  .set-help b{color:var(--ink);font-weight:600;}
+  .btn-reset{margin-top:18px;width:100%;background:transparent;border:1px solid rgba(255,90,60,.4);color:var(--redline);font-weight:700;font-size:13.5px;border-radius:10px;padding:12px;}
+  .btn-reset:active{background:rgba(255,90,60,.1);}
+
+  .foot{text-align:center;font-size:10.5px;color:var(--mute);margin-top:22px;line-height:1.6;letter-spacing:.02em;}
+  .foot b{color:var(--ink);font-weight:600;}
+
+  :focus-visible{outline:2px solid var(--water);outline-offset:2px;}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;}
+  }
+
+  /* ---- backfill modal ---- */
+  .btn-backfill{margin-top:12px;width:100%;background:transparent;border:1px solid rgba(43,183,230,.4);color:var(--water);font-weight:700;font-size:13.5px;border-radius:10px;padding:12px;min-height:44px;}
+  .btn-backfill:active{background:rgba(43,183,230,.08);}
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;overscroll-behavior:contain;}
+  .modal-overlay.hidden{display:none;}
+  .modal-panel{background:var(--panel-raised);border:1px solid var(--panel-line);border-radius:var(--r);width:100%;max-width:420px;max-height:82vh;overflow-y:auto;padding:20px 16px 16px;box-shadow:0 24px 60px -12px #000;}
+  .modal-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  .modal-hd h2{font-size:16px;font-weight:800;margin:0;letter-spacing:-.01em;}
+  .modal-close{background:none;color:var(--mute);font-size:22px;line-height:1;padding:0;width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:10px;flex:none;border:none;}
+  .modal-close:active{background:rgba(255,255,255,.05);color:var(--ink);}
+  .bf-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--panel-line);}
+  .bf-row:first-child{border-top:none;}
+  .bf-label{font-size:14px;font-weight:700;min-width:72px;flex:none;}
+  .bf-inp-wrap{display:flex;align-items:center;background:#0A1722;border:1px solid var(--panel-line);border-radius:10px;padding:0 10px;flex:1;}
+  .bf-inp-wrap span{color:var(--mute);font-weight:700;}
+  .bf-inp-wrap input{flex:1;background:none;border:none;outline:none;color:var(--ink);font-size:16px;font-weight:700;padding:11px 6px;font-family:inherit;font-variant-numeric:tabular-nums;width:100%;min-height:44px;}
+  .modal-actions{display:flex;gap:10px;margin-top:18px;}
+  .btn-bf-save{flex:1;background:linear-gradient(150deg,var(--water),var(--water-deep));color:#04222E;font-weight:800;font-size:15px;border-radius:11px;padding:14px;min-height:44px;border:none;}
+  .btn-bf-save:active{transform:translateY(1px);}
+  .btn-bf-cancel{background:transparent;border:1px solid var(--panel-line);color:var(--mute);font-weight:700;font-size:15px;border-radius:11px;padding:14px;min-height:44px;}
+  .btn-bf-cancel:active{background:rgba(255,255,255,.04);}
+  .modal-empty{font-size:13px;color:var(--mute);padding:14px 0;text-align:center;line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mast">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5C12 2.5 5 10 5 15a7 7 0 0 0 14 0c0-5-7-12.5-7-12.5Z" fill="#fff" fill-opacity=".95"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">SPLASH</div>
+        <div class="brand-sub">Pace Gauge</div>
+      </div>
+    </div>
+    <div class="season-tag"><span class="season-dot" id="seasonDot"></span><span id="seasonName">—</span></div>
+  </div>
+
+  <!-- GAUGE -->
+  <div class="gauge-card">
+    <div class="gauge-wrap">
+      <svg class="gauge" viewBox="0 0 300 176" id="gaugeSvg" role="img" aria-label="Annual revenue gauge">
+        <defs>
+          <linearGradient id="fluid" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#1486AC"/>
+            <stop offset="1" stop-color="#46D2F2"/>
+          </linearGradient>
+        </defs>
+        <path class="arc-track" id="arcTrack"/>
+        <path class="arc-val" id="arcVal"/>
+        <g id="scaleTicks"></g>
+        <line class="redline-tick" id="redlineTick"/>
+        <line class="pace-tick" id="paceTick"/>
+      </svg>
+      <div class="gauge-center">
+        <div class="earned" id="earnedBig">$0</div>
+        <div class="goal-line">of <b id="goalBig">$40,000</b> goal</div>
+        <div class="pace-chip pace-flat" id="paceChip">
+          <span class="pico"></span><span id="paceTxt">Season starting</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MONTH -->
+  <div class="sec-label"><span>This month</span><span class="hint" id="mcHint"></span></div>
+  <div class="month-card">
+    <div class="mc-head">
+      <div class="mc-name"><span id="mcName">Month</span><span class="yr" id="mcYear"></span></div>
+      <span class="mc-peak" id="mcPeak" style="display:none">Peak season</span>
+    </div>
+    <div class="mc-bar"><div class="mc-bar-fill" id="mcFill" style="width:0%"></div></div>
+    <div class="mc-stats">
+      <div class="stat"><div class="k">Earned</div><div class="v" id="mcEarned">$0</div></div>
+      <div class="stat" style="text-align:center"><div class="k">Target</div><div class="v" id="mcTarget">$0</div></div>
+      <div class="stat right"><div class="k">To go</div><div class="v sm" id="mcRemain">$0</div></div>
+    </div>
+    <div class="catchup-note" id="catchNote" style="display:none"></div>
+
+    <div class="log-row">
+      <div class="log-input"><span>$</span><input id="amtInput" type="number" inputmode="decimal" min="0" step="1" placeholder="Job amount"></div>
+      <button class="btn-add" id="addBtn">Add</button>
+    </div>
+    <button class="btn-quick" id="quickBtn" style="display:none"></button>
+
+    <div class="jobs" id="jobsList"></div>
+  </div>
+
+  <!-- SEASON -->
+  <div class="sec-label"><span>The season</span><span class="hint">tap a month to switch</span></div>
+  <div class="season-card">
+    <div class="bars" id="bars"></div>
+    <div class="season-legend">
+      <div class="lg"><i class="i-peak"></i>Peak (catch-up)</div>
+      <div class="lg"><i class="i-prog"></i>In progress</div>
+      <div class="lg"><i class="i-met"></i>Target met</div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <details class="settings">
+    <summary>Settings <span class="sum-chev">▾</span></summary>
+    <div class="set-body">
+      <div class="set-field">
+        <label>Annual goal</label>
+        <div class="set-input"><span>$</span><input id="goalInput" type="number" inputmode="numeric" min="0" step="500"></div>
+        <div class="set-help">Changing this rescales every month's target but keeps the seasonal shape. Bump to <b>$55,000</b> for your Stage 2 income goal.</div>
+      </div>
+      <div class="set-field">
+        <label>Default job amount (one-tap log)</label>
+        <div class="set-input"><span>$</span><input id="defaultInput" type="number" inputmode="decimal" min="0" step="1" placeholder="e.g. 375"></div>
+        <div class="set-help">Set your average ticket to log a typical job in one tap.</div>
+      </div>
+      <button class="btn-backfill" id="backfillBtn">Backfill year to date</button>
+      <button class="btn-reset" id="resetBtn">Reset this year's jobs</button>
+    </div>
+  </details>
+
+  <div class="foot">
+    Splash Pressure Washing LLC · Hampton Roads, VA<br>
+    <b>Saves on this device only.</b> Add to your home screen to keep it.
+  </div>
+</div>
+
+<!-- BACKFILL MODAL -->
+<div class="modal-overlay hidden" id="backfillOverlay" role="dialog" aria-modal="true" aria-labelledby="backfillTitle">
+  <div class="modal-panel">
+    <div class="modal-hd">
+      <h2 id="backfillTitle">Backfill year to date</h2>
+      <button class="modal-close" id="backfillClose" aria-label="Close modal">×</button>
+    </div>
+    <div id="backfillRows"></div>
+    <div class="modal-actions">
+      <button class="btn-bf-cancel" id="backfillCancel">Cancel</button>
+      <button class="btn-bf-save" id="backfillSave">Save backfill</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var PCT = {1:0.0375,2:0.05,3:0.10,4:0.1375,5:0.1375,6:0.1125,7:0.0875,8:0.0875,9:0.0875,10:0.075,11:0.0625,12:0.025};
+  var PEAK = [3,4,5,6];
+  var MShort = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var MFull  = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  var SEASON = {Winter:[12,1,2],Spring:[3,4,5],Summer:[6,7,8],Fall:[9,10,11]};
+  var KEY = "splash_pace_v1";
+
+  var now = new Date();
+  var CUR_Y = now.getFullYear();
+  var CUR_M = now.getMonth()+1;
+  var selM = CUR_M;
+
+  // ---- state ----
+  var state = {goal:40000, def:null, jobs:[]};
+  try{
+    var raw = localStorage.getItem(KEY);
+    if(raw){ var p = JSON.parse(raw);
+      if(p && typeof p==="object"){
+        if(typeof p.goal==="number" && p.goal>0) state.goal=p.goal;
+        if(typeof p.def==="number" && p.def>0) state.def=p.def;
+        if(Array.isArray(p.jobs)) state.jobs=p.jobs;
+      }
+    }
+  }catch(e){}
+
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+
+  // ---- money ----
+  function money(n){
+    n = n||0;
+    var neg = n<0; n=Math.abs(n);
+    var whole = Math.round(n);
+    return (neg?"-$":"$") + whole.toLocaleString("en-US");
+  }
+  function moneyExact(n){
+    n=n||0; var neg=n<0; n=Math.abs(n);
+    var s = n.toLocaleString("en-US",{minimumFractionDigits:(n%1?2:0),maximumFractionDigits:2});
+    return (neg?"-$":"$")+s;
+  }
+
+  // ---- calc ----
+  function target(m){ return state.goal * PCT[m]; }
+  function earned(m,y){ y=y||CUR_Y; var t=0; for(var i=0;i<state.jobs.length;i++){var j=state.jobs[i]; if(j.m===m&&j.y===y) t+=j.amt;} return t; }
+  function earnedYTD(){ var t=0; for(var m=1;m<=12;m++) t+=earned(m); return t; }
+
+  function pace(){
+    var exp=0, got=0;
+    for(var m=1;m<CUR_M;m++){ exp+=target(m); got+=earned(m); }
+    var diff = got-exp;                       // + ahead / - behind, measured through last completed month
+    var behind = Math.max(0,-diff);
+    var remPeak = PEAK.filter(function(x){return x>=CUR_M;});
+    var per = (behind>0 && remPeak.length>0) ? behind/remPeak.length : 0;
+    return {exp:exp, got:got, diff:diff, behind:behind, remPeak:remPeak, per:per, hasCompleted:(CUR_M>1)};
+  }
+  function adjTarget(m){
+    var p = pace();
+    if(p.per>0 && PEAK.indexOf(m)>=0 && m>=CUR_M) return target(m)+p.per;
+    return target(m);
+  }
+
+  function seasonOf(m){ for(var s in SEASON){ if(SEASON[s].indexOf(m)>=0) return s; } return ""; }
+
+  // ---- gauge geometry ----
+  var CX=150, CY=150, R=128;
+  function ptArc(frac, rr){
+    var ang = Math.PI*(1-frac);
+    return {x: CX + rr*Math.cos(ang), y: CY - rr*Math.sin(ang)};
+  }
+  var arcVal = document.getElementById("arcVal");
+  var arcTrack = document.getElementById("arcTrack");
+  (function buildArc(){
+    var a=ptArc(0,R), b=ptArc(1,R);
+    var d = "M "+a.x.toFixed(2)+" "+a.y.toFixed(2)+" A "+R+" "+R+" 0 0 0 "+b.x.toFixed(2)+" "+b.y.toFixed(2);
+    arcTrack.setAttribute("d",d);
+    arcVal.setAttribute("d",d);
+  })();
+  var ARC_LEN = arcVal.getTotalLength ? arcVal.getTotalLength() : Math.PI*R;
+  arcVal.style.strokeDasharray = ARC_LEN;
+  arcVal.style.strokeDashoffset = ARC_LEN;
+
+  function buildScale(){
+    var g = document.getElementById("scaleTicks"); g.innerHTML="";
+    for(var i=0;i<=4;i++){
+      var f=i/4;
+      var o=ptArc(f,R-12), inn=ptArc(f,R-19), lbl=ptArc(f,R-30);
+      var ns="http://www.w3.org/2000/svg";
+      var ln=document.createElementNS(ns,"line");
+      ln.setAttribute("class","tick-min");
+      ln.setAttribute("x1",o.x.toFixed(1));ln.setAttribute("y1",o.y.toFixed(1));
+      ln.setAttribute("x2",inn.x.toFixed(1));ln.setAttribute("y2",inn.y.toFixed(1));
+      g.appendChild(ln);
+      var tx=document.createElementNS(ns,"text");
+      tx.setAttribute("class","tick-lbl");
+      tx.setAttribute("x",lbl.x.toFixed(1));tx.setAttribute("y",(lbl.y+3).toFixed(1));
+      tx.setAttribute("text-anchor", f<0.15?"start":(f>0.85?"end":"middle"));
+      var val = state.goal*f;
+      tx.textContent = val>=1000 ? "$"+Math.round(val/1000)+"k" : "$"+Math.round(val);
+      g.appendChild(tx);
+    }
+    // redline tick at 100%
+    var ro=ptArc(1,R+9), ri=ptArc(1,R-9), rl=document.getElementById("redlineTick");
+    rl.setAttribute("x1",ro.x.toFixed(1));rl.setAttribute("y1",ro.y.toFixed(1));
+    rl.setAttribute("x2",ri.x.toFixed(1));rl.setAttribute("y2",ri.y.toFixed(1));
+  }
+
+  function setPaceTick(){
+    var p = pace();
+    var f = state.goal>0 ? Math.min(1, Math.max(0, p.exp/state.goal)) : 0;
+    var tk = document.getElementById("paceTick");
+    if(!p.hasCompleted || f<=0.001){ tk.style.display="none"; return; }
+    tk.style.display="";
+    var o=ptArc(f,R+8), i=ptArc(f,R-12);
+    tk.setAttribute("x1",o.x.toFixed(1));tk.setAttribute("y1",o.y.toFixed(1));
+    tk.setAttribute("x2",i.x.toFixed(1));tk.setAttribute("y2",i.y.toFixed(1));
+    tk.setAttribute("stroke", p.diff>=0 ? "#36D399" : "#F5B544");
+  }
+
+  // ---- render ----
+  function renderGauge(){
+    var ytd = earnedYTD();
+    document.getElementById("earnedBig").textContent = money(ytd);
+    document.getElementById("goalBig").textContent = money(state.goal);
+    buildScale();
+    setPaceTick();
+    var frac = state.goal>0 ? Math.min(1, ytd/state.goal) : 0;
+    // animate fill
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){ arcVal.style.strokeDashoffset = (ARC_LEN*(1-frac)).toFixed(2); });
+    });
+
+    // pace chip
+    var p = pace();
+    var chip = document.getElementById("paceChip");
+    var txt = document.getElementById("paceTxt");
+    chip.className = "pace-chip ";
+    var inner = "";
+    if(!p.hasCompleted){
+      chip.className += "pace-flat";
+      txt.innerHTML = "Season just getting started";
+    } else if(p.diff >= 0){
+      chip.className += "pace-ahead";
+      txt.innerHTML = "Ahead of pace by "+money(p.diff);
+    } else {
+      chip.className += "pace-behind";
+      if(p.remPeak.length>0){
+        var lab = p.remPeak.length===1 ? MShort[p.remPeak[0]-1]
+                  : MShort[p.remPeak[0]-1]+"–"+MShort[p.remPeak[p.remPeak.length-1]-1];
+        txt.innerHTML = "Behind pace by "+money(p.behind)+" <small>· rolled into "+lab+"</small>";
+      } else {
+        txt.innerHTML = "Behind pace by "+money(p.behind)+" <small>· recovers next spring</small>";
+      }
+    }
+  }
+
+  function renderMonth(){
+    var isPeak = PEAK.indexOf(selM)>=0;
+    var base = target(selM);
+    var adj = adjTarget(selM);
+    var got = earned(selM);
+    var rem = Math.max(0, adj-got);
+    document.getElementById("mcName").textContent = MFull[selM-1];
+    document.getElementById("mcYear").textContent = CUR_Y;
+    document.getElementById("mcPeak").style.display = isPeak ? "" : "none";
+    document.getElementById("mcEarned").textContent = money(got);
+    document.getElementById("mcTarget").textContent = money(adj);
+    document.getElementById("mcRemain").textContent = money(rem);
+    var pctFill = adj>0 ? Math.min(100,(got/adj)*100) : 0;
+    var fill = document.getElementById("mcFill");
+    fill.style.width = pctFill+"%";
+    if(got>=adj && adj>0){ fill.style.background="linear-gradient(90deg,#1f9e6f,#36D399)"; }
+    else { fill.style.background="linear-gradient(90deg,#1486AC,#2BB7E6)"; }
+
+    // hint
+    var hint = document.getElementById("mcHint");
+    if(selM===CUR_M) hint.textContent = "";
+    else hint.textContent = (selM<CUR_M?"past":"upcoming");
+
+    // catch-up note
+    var cn = document.getElementById("catchNote");
+    var extra = adj - base;
+    if(extra > 0.5){
+      cn.style.display="";
+      cn.innerHTML = "Catch-up: base "+money(base)+" <b>+ "+money(extra)+"</b> rolled in from earlier shortfall = <b>"+money(adj)+"</b> target.";
+    } else { cn.style.display="none"; }
+
+    renderJobs();
+  }
+
+  function renderJobs(){
+    var box = document.getElementById("jobsList");
+    var list = state.jobs.filter(function(j){return j.m===selM && j.y===CUR_Y;}).sort(function(a,b){return b.ts-a.ts;});
+    if(list.length===0){
+      box.innerHTML = '<div class="jobs-empty">No jobs logged in '+MFull[selM-1]+' yet.<br>Add one to start building pressure.</div>';
+      return;
+    }
+    var html=""; var shown=Math.min(list.length,8);
+    for(var i=0;i<shown;i++){
+      var j=list[i];
+      var d=new Date(j.ts);
+      var ds=(d.getMonth()+1)+"/"+d.getDate();
+      html += '<div class="job"><div><div class="job-amt">'+moneyExact(j.amt)+'</div><div class="job-meta">logged '+ds+'</div></div>'+
+              '<button class="job-del" data-id="'+j.id+'" aria-label="Delete job">×</button></div>';
+    }
+    if(list.length>shown) html += '<div class="jobs-more">+ '+(list.length-shown)+' more this month</div>';
+    box.innerHTML = html;
+    var dels = box.querySelectorAll(".job-del");
+    for(var k=0;k<dels.length;k++){
+      dels[k].addEventListener("click", function(){
+        var id=this.getAttribute("data-id");
+        state.jobs = state.jobs.filter(function(x){return x.id!=id;});
+        save(); renderAll();
+      });
+    }
+  }
+
+  function renderBars(){
+    var box=document.getElementById("bars"); box.innerHTML="";
+    var maxT=0; for(var m=1;m<=12;m++){ if(adjTarget(m)>maxT) maxT=adjTarget(m); }
+    if(maxT<=0) maxT=1;
+    for(var m=1;m<=12;m++){
+      var col=document.createElement("div");
+      var cls="bcol";
+      if(PEAK.indexOf(m)>=0) cls+=" peak";
+      if(m===selM) cls+=" sel";
+      if(m===CUR_M) cls+=" now";
+      var got=earned(m), adj=adjTarget(m), met=(adj>0 && got>=adj);
+      if(met) cls+=" met";
+      col.className=cls;
+      var hT=(adj/maxT)*100;
+      var hF=adj>0?Math.min(100,(got/adj)*100):0;
+      col.innerHTML='<div class="btrack" style="height:'+hT.toFixed(1)+'%"><div class="bfill" style="height:'+hF.toFixed(1)+'%"></div></div>'+
+                    '<div class="blabel">'+MShort[m-1]+'</div>';
+      (function(mm){ col.addEventListener("click",function(){ selM=mm; renderMonth(); renderBars(); document.getElementById("amtInput").value=""; }); })(m);
+      box.appendChild(col);
+    }
+  }
+
+  function renderSeason(){
+    var s=seasonOf(CUR_M);
+    document.getElementById("seasonName").textContent = s+" · "+CUR_Y;
+    var dot=document.getElementById("seasonDot");
+    var c = s==="Spring"?"#36D399":(s==="Summer"?"#2BB7E6":(s==="Fall"?"#F5B544":"#7392A8"));
+    dot.style.background=c; dot.style.boxShadow="0 0 8px "+c;
+  }
+
+  function renderSettings(){
+    document.getElementById("goalInput").value = state.goal;
+    document.getElementById("defaultInput").value = state.def!=null ? state.def : "";
+    var qb=document.getElementById("quickBtn");
+    if(state.def!=null && state.def>0){ qb.style.display=""; qb.textContent="+ Log "+moneyExact(state.def)+" (typical job)"; }
+    else qb.style.display="none";
+  }
+
+  function renderAll(){ renderGauge(); renderMonth(); renderBars(); renderSeason(); renderSettings(); }
+
+  // ---- actions ----
+  function addJob(amt){
+    amt = parseFloat(amt);
+    if(isNaN(amt) || amt<=0) return;
+    state.jobs.push({id:Date.now()+"_"+Math.floor(Math.random()*9999), amt:amt, m:selM, y:CUR_Y, ts:Date.now()});
+    save();
+    document.getElementById("amtInput").value="";
+    renderAll();
+  }
+
+  document.getElementById("addBtn").addEventListener("click", function(){ addJob(document.getElementById("amtInput").value); });
+  document.getElementById("amtInput").addEventListener("keydown", function(e){ if(e.key==="Enter") addJob(this.value); });
+  document.getElementById("quickBtn").addEventListener("click", function(){ if(state.def>0) addJob(state.def); });
+
+  document.getElementById("goalInput").addEventListener("change", function(){
+    var v=parseFloat(this.value); if(!isNaN(v)&&v>0){ state.goal=v; save(); renderAll(); }
+  });
+  document.getElementById("defaultInput").addEventListener("change", function(){
+    var v=parseFloat(this.value); state.def=(!isNaN(v)&&v>0)?v:null; save(); renderSettings();
+  });
+  document.getElementById("resetBtn").addEventListener("click", function(){
+    if(confirm("Clear all jobs logged in "+CUR_Y+"? This can't be undone.")){
+      state.jobs = state.jobs.filter(function(j){return j.y!==CUR_Y;});
+      save(); selM=CUR_M; renderAll();
+    }
+  });
+
+  // ---- backfill modal ----
+  function openBackfillModal(){
+    var rowsDiv=document.getElementById("backfillRows");
+    rowsDiv.innerHTML="";
+    if(CUR_M<=1){
+      rowsDiv.innerHTML='<div class="modal-empty">No completed months to backfill yet.<br>Come back in February.</div>';
+    } else {
+      for(var m=1;m<CUR_M;m++){
+        var got=earned(m);
+        var row=document.createElement("div");
+        row.className="bf-row";
+        row.innerHTML='<div class="bf-label">'+MFull[m-1]+'</div>'+
+          '<div class="bf-inp-wrap"><span>$</span>'+
+          '<input type="number" inputmode="decimal" min="0" step="1" data-m="'+m+'" value="'+Math.round(got)+'">'+
+          '</div>';
+        rowsDiv.appendChild(row);
+      }
+    }
+    document.getElementById("backfillOverlay").classList.remove("hidden");
+  }
+
+  function closeBackfillModal(){
+    document.getElementById("backfillOverlay").classList.add("hidden");
+  }
+
+  document.getElementById("backfillBtn").addEventListener("click", openBackfillModal);
+  document.getElementById("backfillClose").addEventListener("click", closeBackfillModal);
+  document.getElementById("backfillCancel").addEventListener("click", closeBackfillModal);
+
+  document.getElementById("backfillOverlay").addEventListener("click", function(e){
+    if(e.target===this) closeBackfillModal();
+  });
+
+  document.addEventListener("keydown", function(e){
+    if(e.key==="Escape" && !document.getElementById("backfillOverlay").classList.contains("hidden"))
+      closeBackfillModal();
+  });
+
+  document.getElementById("backfillSave").addEventListener("click", function(){
+    var inputs=document.getElementById("backfillRows").querySelectorAll("input[data-m]");
+    for(var i=0;i<inputs.length;i++){
+      var raw=inputs[i].value.trim();
+      if(raw==="") continue;
+      var amt=parseFloat(raw);
+      if(isNaN(amt)||amt<0) continue;
+      var m=parseInt(inputs[i].getAttribute("data-m"),10);
+      // remove all existing entries for this month/year, then insert one backfill entry
+      state.jobs=state.jobs.filter(function(j){return !(j.m===m&&j.y===CUR_Y);});
+      state.jobs.push({id:Date.now()+"_bf_"+m+"_"+Math.floor(Math.random()*9999),amt:amt,m:m,y:CUR_Y,ts:Date.now(),src:"backfill"});
+    }
+    save();
+    closeBackfillModal();
+    renderAll();
+  });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
