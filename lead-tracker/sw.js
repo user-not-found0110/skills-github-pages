@@ -1,4 +1,4 @@
-const CACHE_NAME = 'splash-leads-v1';
+const CACHE_NAME = 'splash-leads-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -27,8 +27,17 @@ self.addEventListener('activate', event => {
   );
 });
 
+// Network-first so deployed updates show up on next open; cache keeps it working offline.
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
+    fetch(event.request)
+      .then(resp => {
+        if (resp.ok && event.request.method === 'GET') {
+          const copy = resp.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        }
+        return resp;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
