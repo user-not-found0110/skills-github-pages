@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a4d8c">
+  <meta name="description" content="Splash Pressure Washing - Track LSA leads from first text to booked job to review">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Leads">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="stylesheet" href="style.css">
+  <title>Splash PW - Lead Tracker</title>
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-content">
+      <img src="icons/icon.svg" alt="" class="header-icon">
+      <div>
+        <h1>Lead Tracker</h1>
+        <p class="header-sub">Follow up fast. Book more washes.</p>
+      </div>
+    </div>
+    <button id="installBtn" class="install-btn" style="display:none">Install App</button>
+  </header>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="alert"></div>
+
+  <main class="tab-content">
+
+    <!-- TAB 1: Leads -->
+    <section id="tab-leads" class="tab-panel active">
+
+      <!-- Due Now -->
+      <div id="dueSection" style="display:none">
+        <h2 class="section-title due-title">Due Now</h2>
+        <div id="dueList" class="lead-list"></div>
+      </div>
+
+      <!-- Pipeline -->
+      <h2 class="section-title">Pipeline</h2>
+      <div id="filterChips" class="filter-chips">
+        <button class="chip active" data-filter="all">All</button>
+        <button class="chip" data-filter="new">New</button>
+        <button class="chip" data-filter="contacted">Contacted</button>
+        <button class="chip" data-filter="quoted">Quoted</button>
+        <button class="chip" data-filter="scheduled">Scheduled</button>
+      </div>
+      <div id="leadList" class="lead-list"></div>
+      <div id="leadsEmpty" class="empty-state" style="display:none">
+        No active leads. Tap <strong>New Lead</strong> the moment the next one comes in &mdash; answering
+        an LSA lead in the first few minutes is what wins the job.
+      </div>
+
+    </section>
+
+    <!-- TAB 2: New Lead -->
+    <section id="tab-new" class="tab-panel">
+      <h2 class="section-title">New Lead</h2>
+      <div class="card">
+        <div class="form-group">
+          <label for="leadName">Customer Name <span class="req">*</span></label>
+          <input type="text" id="leadName" autocomplete="off" placeholder="Jane Smith">
+        </div>
+        <div class="form-group">
+          <label for="leadPhone">Phone <span class="req">*</span></label>
+          <input type="tel" id="leadPhone" inputmode="tel" autocomplete="off" placeholder="757-555-0123">
+        </div>
+        <div class="form-group">
+          <label for="leadAddress">Address</label>
+          <input type="text" id="leadAddress" autocomplete="off" placeholder="123 Oak Ridge Blvd, Chesapeake, VA">
+        </div>
+        <div class="form-group">
+          <label>Lead Source</label>
+          <div class="seg-row" id="leadSource">
+            <button type="button" class="seg-btn active" data-value="lsa-call">LSA Call</button>
+            <button type="button" class="seg-btn" data-value="lsa-message">LSA Message</button>
+            <button type="button" class="seg-btn" data-value="other">Other</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Services Wanted</label>
+          <div class="service-chips" id="leadServices">
+            <button type="button" class="chip" data-value="House wash">House wash</button>
+            <button type="button" class="chip" data-value="Driveway">Driveway</button>
+            <button type="button" class="chip" data-value="Roof">Roof</button>
+            <button type="button" class="chip" data-value="Gutters">Gutters</button>
+            <button type="button" class="chip" data-value="Deck / patio">Deck / patio</button>
+            <button type="button" class="chip" data-value="Fence">Fence</button>
+            <button type="button" class="chip" data-value="Commercial">Commercial</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="leadNotes">Notes</label>
+          <textarea id="leadNotes" rows="2" placeholder="2-story vinyl, heavy mold on north side, wants it done before a graduation party..."></textarea>
+        </div>
+        <button id="saveTextBtn" class="btn-primary">Save &amp; Text Now</button>
+        <button id="saveBtn" class="btn-outline">Save Only</button>
+      </div>
+    </section>
+
+    <!-- TAB 3: Templates -->
+    <section id="tab-templates" class="tab-panel">
+      <h2 class="section-title">Your Info</h2>
+      <div class="card">
+        <div class="form-group">
+          <label for="setOwner">Your First Name</label>
+          <input type="text" id="setOwner" autocomplete="off" placeholder="Josh">
+        </div>
+        <div class="form-group">
+          <label for="setCompany">Company Name</label>
+          <input type="text" id="setCompany" autocomplete="off" placeholder="Splash Pressure Washing">
+        </div>
+        <div class="form-group">
+          <label for="setReviewLink">Google Review Link</label>
+          <input type="url" id="setReviewLink" autocomplete="off" placeholder="https://g.page/r/.../review">
+          <p class="field-hint">Google Business Profile app &rarr; Ask for reviews &rarr; copy the short link. Reviews boost your LSA ranking.</p>
+        </div>
+        <button id="saveSettingsBtn" class="btn-primary">Save Info</button>
+      </div>
+
+      <h2 class="section-title">Message Templates</h2>
+      <p class="section-hint">Placeholders fill in automatically: <code>{name}</code>, <code>{service}</code>, <code>{company}</code>, <code>{owner}</code>, <code>{review_link}</code>. Edits save as you type.</p>
+      <div id="templateCards"></div>
+      <button id="resetTemplatesBtn" class="btn-outline">Reset All Templates to Defaults</button>
+    </section>
+
+    <!-- TAB 4: Done -->
+    <section id="tab-done" class="tab-panel">
+      <h2 class="section-title">Done &amp; Lost</h2>
+      <div id="doneList" class="lead-list"></div>
+      <div id="doneEmpty" class="empty-state" style="display:none">
+        Completed and lost leads land here.
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="leads">
+      <span class="nav-icon-wrap">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+        <span id="dueBadge" class="due-badge" style="display:none"></span>
+      </span>
+      Leads
+    </button>
+    <button class="nav-btn" data-tab="new">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      New Lead
+    </button>
+    <button class="nav-btn" data-tab="templates">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      Templates
+    </button>
+    <button class="nav-btn" data-tab="done">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      Done
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+</body>
+</html>

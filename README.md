@@ -8,6 +8,7 @@ Two separate, installable mobile-first apps for [Splash Pressure Washing](https:
 | **Content Creator** | `/content/` | Generate daily Google / Facebook / Instagram / blog posts. |
 | **Wash Window** | `/wash-window/` | Check this week's forecast and flag the best days to schedule washes (no rain-outs). |
 | **Pace Gauge** | `/splash-pace-tracker/` | Track year-to-date revenue against seasonal targets. |
+| **Lead Tracker** | `/lead-tracker/` | Work Google LSA leads: instant first-response texts, follow-up due list, review requests. |
 
 Each app installs as its own Android home-screen icon with its own name. They share nothing at runtime — separate manifests, separate service workers, separate localStorage. You can install one, both, or neither.
 
@@ -68,6 +69,29 @@ content/
   sw.js            Service worker (offline cache, scoped to /content/)
   icons/icon.svg   App icon
 ```
+
+---
+
+## Lead Tracker — `/lead-tracker/`
+
+Built for the moment a Google Local Service Ads lead comes in — the jobs go to whoever answers first, and to whoever follows up.
+
+### Leads tab
+- **Due Now** sits on top with a red badge on the nav icon: every lead whose follow-up date has arrived, oldest first. Open the app, clear the list.
+- Below it, the pipeline: **New → Contacted → Quoted → Scheduled**, filterable by status.
+- Tap any lead to expand it: one-tap **Text** (opens your SMS app with the right template for that stage already filled in), **Call**, **Copy Address** (paste straight into the Pricing Agent or Quote Builder), and **Ask for Review**.
+- Changing a status auto-suggests the next follow-up date (contacted → +1 day, quoted → +3 days, scheduled → job date, done → next-day review request). Every date is editable.
+
+### New Lead tab
+Name, phone, address, source (LSA call / LSA message / other), service chips, notes. **Save & Text Now** saves the lead, marks it contacted, and opens your texting app with the first-response template — the whole speed-to-lead move in about ten seconds.
+
+### Templates tab
+Eight editable messages — first response (call / message / after-hours), no-reply check-in, quote bump, booking confirmation, day-before reminder, and review request — with `{name}`, `{service}`, `{company}`, `{owner}`, `{review_link}` placeholders filled automatically. A settings card holds your name, company name, and Google review link (reviews raise LSA ranking and lower cost-per-lead).
+
+### Done tab
+Completed and lost leads, with a stamp showing whether the review was requested. Restore or delete.
+
+Everything is stored locally on the phone (localStorage, ~200-lead rolling history). No server, works offline.
 
 ---
 
