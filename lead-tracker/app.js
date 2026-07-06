@@ -31,35 +31,63 @@
 
   const TEMPLATE_DEFS = [
     {
-      key: 'first_call', name: 'First response — call lead',
+      key: 'first_call', group: 'Getting the job', name: 'First response — call lead',
       text: "Hi {name}, this is {owner} with {company} — great talking with you! I'll get your free quote for {service} over shortly. Any photos of the area you can text me will help me price it fast."
     },
     {
-      key: 'first_msg', name: 'First response — message lead',
+      key: 'first_msg', group: 'Getting the job', name: 'First response — message lead',
       text: "Hi {name}, this is {owner} with {company} — thanks for reaching out on Google! I'd love to get you a fast free quote for {service}. What's the property address, and is there a good time to call?"
     },
     {
-      key: 'after_hours', name: 'After-hours reply',
+      key: 'after_hours', group: 'Getting the job', name: 'After-hours reply',
       text: "Hi {name}, this is {owner} with {company}. Sorry we missed you — we're finishing up jobs for the day. You're first on my list in the morning. If you can text me the address and what you'd like cleaned, I'll have a quote ready first thing."
     },
     {
-      key: 'check_in', name: 'No-reply check-in',
+      key: 'check_in', group: 'Getting the job', name: 'No-reply check-in',
       text: "Hi {name}, {owner} with {company} again — just making sure my last message reached you. Still happy to get you a free quote for {service} whenever you're ready."
     },
     {
-      key: 'quote_bump', name: 'Quote follow-up',
+      key: 'quote_text', group: 'Closing the sale', name: 'Text the quote',
+      text: "Hi {name}, here's your quote from {company}: {quote} for {service}. That covers everything — equipment, cleaning solutions, and a full rinse-down, and we don't leave until you're happy with it. The price is good for 7 days. Reply YES and I'll get you on the schedule!"
+    },
+    {
+      key: 'quote_bump', group: 'Closing the sale', name: 'Quote follow-up',
       text: "Hi {name}, {owner} with {company} here. Just checking in on the quote I sent for {service} — happy to answer any questions or adjust anything. Our schedule is filling up, so I wanted to make sure we can hold a spot for you."
     },
     {
-      key: 'schedule_confirm', name: 'Booking confirmation',
+      key: 'offer_times', group: 'Closing the sale', name: 'Offer two days',
+      text: "Good news {name} — I've got {slot1} and {slot2} open for your {service}. Which works better for you?"
+    },
+    {
+      key: 'obj_price', group: 'Closing the sale', name: 'Objection: too pricey',
+      text: "Totally understand, {name}. We're not always the cheapest, but we're licensed and insured, veteran and firefighter owned, and we don't leave until you're happy with it. If it helps, I can bundle in the driveway or gutters and sharpen the total. Want me to run that number?"
+    },
+    {
+      key: 'obj_spouse', group: 'Closing the sale', name: 'Objection: need to ask',
+      text: "Of course — talk it over! I'll hold this quote for you for 7 days. Happy to text over some before-and-after photos from jobs nearby if that helps the conversation."
+    },
+    {
+      key: 'obj_later', group: 'Closing the sale', name: 'Objection: maybe later',
+      text: "No problem, {name}. One heads-up: our schedule fills fast this time of year and the quote is good for 7 days — if you want a spot, just say the word and I'll pencil you in."
+    },
+    {
+      key: 'final_nudge', group: 'Closing the sale', name: 'Final nudge ($25 off)',
+      text: "Hi {name}, {owner} with {company}. A slot opened up this week, so I can take $25 off your {service} quote if we grab it — first come, first served. Reply YES and it's yours."
+    },
+    {
+      key: 'deposit_ask', group: 'Closing the sale', name: 'Ask for a deposit',
+      text: "Awesome, {name}! To lock in your spot, a $50 deposit does it: {payment_link} — the rest isn't due until the job's done and you've looked it over. Once it's in, you're officially on the books!"
+    },
+    {
+      key: 'schedule_confirm', group: 'After booking', name: 'Booking confirmation',
       text: "Hi {name}, you're on the schedule with {company} for {service}. We'll text you the day before as a reminder. Thanks for choosing us!"
     },
     {
-      key: 'day_before', name: 'Day-before reminder',
+      key: 'day_before', group: 'After booking', name: 'Day-before reminder',
       text: "Hi {name}, {owner} with {company} — friendly reminder we'll be out tomorrow for {service}. No need to do anything ahead of time; just make sure we can reach the areas being cleaned. See you then!"
     },
     {
-      key: 'review_request', name: 'Review request',
+      key: 'review_request', group: 'After booking', name: 'Review request',
       text: "Hi {name}, thanks again for letting {company} take care of your {service}! If you were happy with the work, a quick Google review would mean the world to a small local business like ours: {review_link}"
     }
   ];
@@ -79,7 +107,7 @@
   let leads = loadJSON(LS_LEADS, []);
   let templates = Object.assign(defaultTemplates(), loadJSON(LS_TEMPLATES, {}));
   let settings = Object.assign(
-    { owner: '', company: 'Splash Pressure Washing', reviewLink: '' },
+    { owner: '', company: 'Splash Pressure Washing', reviewLink: '', paymentLink: '' },
     loadJSON(LS_SETTINGS, {})
   );
   let currentFilter = 'all';
@@ -169,18 +197,51 @@
       : 'pressure washing';
   }
 
-  function fillTemplate(key, lead) {
+  function fillTemplate(key, lead, extra) {
+    extra = extra || {};
     return (templates[key] || '')
       .replace(/\{name\}/g, firstName(lead.name))
       .replace(/\{service\}/g, serviceText(lead))
       .replace(/\{company\}/g, settings.company || 'Splash Pressure Washing')
       .replace(/\{owner\}/g, settings.owner || 'the owner')
-      .replace(/\{review_link\}/g, settings.reviewLink || '');
+      .replace(/\{review_link\}/g, settings.reviewLink || '')
+      .replace(/\{quote\}/g, lead.quoteAmount ? '$' + lead.quoteAmount : 'the quoted price')
+      .replace(/\{payment_link\}/g, settings.paymentLink || '')
+      .replace(/\{slot1\}/g, extra.slot1 || '')
+      .replace(/\{slot2\}/g, extra.slot2 || '');
   }
 
-  function smsHref(lead, templateKey) {
+  function smsHref(lead, templateKey, extra) {
     return 'sms:' + cleanPhone(lead.phone) + '?body=' +
-           encodeURIComponent(fillTemplate(templateKey, lead));
+           encodeURIComponent(fillTemplate(templateKey, lead, extra));
+  }
+
+  // "Thursday, Jul 9" — how a proposed wash day reads in a text.
+  function prettySlot(ymd) {
+    if (!ymd) return '';
+    const [y, m, d] = ymd.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US',
+      { weekday: 'long', month: 'short', day: 'numeric' });
+  }
+
+  function gcalUrl(lead) {
+    if (!lead.scheduledDate) return '#';
+    const [y, m, d] = lead.scheduledDate.split('-').map(Number);
+    const start = new Date(y, m - 1, d);
+    const end = new Date(y, m - 1, d + 1);
+    const fmt = dt => dateStr(dt).replace(/-/g, '');
+    const title = ((lead.services && lead.services.length) ? lead.services.join(', ') : 'Pressure washing') +
+                  ' — ' + displayName(lead);
+    const details = [
+      'Phone: ' + lead.phone,
+      lead.quoteAmount ? 'Quote: $' + lead.quoteAmount : '',
+      lead.notes || ''
+    ].filter(Boolean).join('\n');
+    return 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
+      '&text=' + encodeURIComponent(title) +
+      '&dates=' + fmt(start) + '/' + fmt(end) +
+      '&location=' + encodeURIComponent(lead.address || '') +
+      '&details=' + encodeURIComponent(details);
   }
 
   function copyText(text, okMsg) {
@@ -271,6 +332,29 @@
             <button type="button" class="action-btn a-copy" data-action="copy-address">&#128203; Copy Address</button>
             <a class="action-btn a-review" data-action="review" href="${smsHref(lead, 'review_request')}">&#11088; Ask for Review</a>
           </div>
+          ${lead.status === 'quoted' ? `
+          <div class="detail-label">Close the Sale</div>
+          <div class="action-btns">
+            <a class="action-btn a-text" data-action="text-quote" href="${smsHref(lead, 'quote_text')}">&#128176; Text the Quote</a>
+            <a class="action-btn a-review" href="${smsHref(lead, 'final_nudge')}">&#9203; Final Nudge</a>
+          </div>
+          <div class="offer-days">
+            <input type="date" class="offer-slot1" aria-label="First day to offer">
+            <input type="date" class="offer-slot2" aria-label="Second day to offer">
+            <a class="action-btn a-text offer-send" data-action="offer-times" href="#">Offer These Days</a>
+          </div>
+          <div class="detail-label">If they push back&hellip;</div>
+          <div class="obj-btns">
+            <a class="mini-btn" href="${smsHref(lead, 'obj_price')}">&ldquo;Too pricey&rdquo;</a>
+            <a class="mini-btn" href="${smsHref(lead, 'obj_spouse')}">&ldquo;Need to ask&rdquo;</a>
+            <a class="mini-btn" href="${smsHref(lead, 'obj_later')}">&ldquo;Maybe later&rdquo;</a>
+          </div>` : ''}
+          ${lead.status === 'quoted' || lead.status === 'scheduled' ? `
+          <div class="detail-label">Lock It In</div>
+          <div class="action-btns">
+            <a class="action-btn a-call" data-action="deposit" href="${smsHref(lead, 'deposit_ask')}">&#128181; Ask for Deposit</a>
+            <a class="action-btn a-copy" data-action="calendar" target="_blank" rel="noopener" href="${gcalUrl(lead)}">&#128197; Add to Calendar</a>
+          </div>` : ''}
 
           <div class="detail-label">Details</div>
           <div class="detail-fields">
@@ -380,6 +464,40 @@
         setTimeout(renderAll, 300);
         break;
 
+      case 'text-quote':
+        if (!lead.quoteAmount) {
+          e.preventDefault();
+          showToast('Enter the Quote $ below first — it fills into the text');
+        }
+        break;
+
+      case 'offer-times': {
+        const s1 = card.querySelector('.offer-slot1').value;
+        const s2 = card.querySelector('.offer-slot2').value;
+        if (!s1 || !s2) {
+          e.preventDefault();
+          showToast('Pick both days to offer');
+          break;
+        }
+        // Rewrite the href before the default click navigation reads it.
+        actionEl.href = smsHref(lead, 'offer_times', { slot1: prettySlot(s1), slot2: prettySlot(s2) });
+        break;
+      }
+
+      case 'deposit':
+        if (!settings.paymentLink) {
+          e.preventDefault();
+          showToast('Add your payment link first: Templates tab → Your Info');
+        }
+        break;
+
+      case 'calendar':
+        if (!lead.scheduledDate) {
+          e.preventDefault();
+          showToast('Set the Job date below first');
+        }
+        break;
+
       case 'copy-address':
         if (lead.address) copyText(lead.address, 'Address copied — paste it into the Pricing Agent');
         else showToast('No address on this lead');
@@ -410,7 +528,7 @@
     if (!lead) return;
     lead[field] = e.target.value;
     saveLeads();
-    if (field === 'nextFollowUpAt' || field === 'scheduledDate' || field === 'name') {
+    if (field === 'nextFollowUpAt' || field === 'scheduledDate' || field === 'name' || field === 'quoteAmount') {
       renderAll();
       showToast('Saved');
     }
@@ -511,14 +629,20 @@
 
   // ============ TEMPLATES & SETTINGS ============
   function renderTemplates() {
-    $('templateCards').innerHTML = TEMPLATE_DEFS.map(def => `
+    let lastGroup = '';
+    $('templateCards').innerHTML = TEMPLATE_DEFS.map(def => {
+      const header = def.group !== lastGroup
+        ? `<h3 class="tpl-group">${def.group}</h3>` : '';
+      lastGroup = def.group;
+      return header + `
       <div class="card template-card" data-key="${def.key}">
         <div class="tpl-head">
           <span class="tpl-name">${def.name}</span>
           <button type="button" class="tpl-copy">Copy</button>
         </div>
         <textarea rows="3">${esc(templates[def.key])}</textarea>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   $('templateCards').addEventListener('input', e => {
@@ -546,12 +670,14 @@
     $('setOwner').value = settings.owner;
     $('setCompany').value = settings.company;
     $('setReviewLink').value = settings.reviewLink;
+    $('setPaymentLink').value = settings.paymentLink;
   }
 
   $('saveSettingsBtn').addEventListener('click', () => {
     settings.owner = $('setOwner').value.trim();
     settings.company = $('setCompany').value.trim() || 'Splash Pressure Washing';
     settings.reviewLink = $('setReviewLink').value.trim();
+    settings.paymentLink = $('setPaymentLink').value.trim();
     saveSettings();
     showToast('Info saved — templates will use it');
   });

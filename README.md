@@ -81,12 +81,14 @@ Built for the moment a Google Local Service Ads lead comes in — the jobs go to
 - Below it, the pipeline: **New → Contacted → Quoted → Scheduled**, filterable by status.
 - Tap any lead to expand it: one-tap **Text** (opens your SMS app with the right template for that stage already filled in), **Call**, **Copy Address** (paste straight into the Pricing Agent or Quote Builder), and **Ask for Review**.
 - Changing a status auto-suggests the next follow-up date (contacted → +1 day, quoted → +3 days, scheduled → job date, done → next-day review request). Every date is editable.
+- **Quoted leads get a "Close the Sale" section**: text the quote itself (price pulled from the Quote $ field, "good for 7 days — reply YES"), offer two concrete days with date pickers (assumptive close), three objection quick-replies ("too pricey" / "need to ask" / "maybe later"), and a $25-off final nudge.
+- **Quoted and scheduled leads get "Lock It In"**: one tap texts a deposit request with your payment link, and **Add to Calendar** drops the job — customer, address, phone, quote, notes — straight into Google Calendar.
 
 ### New Lead tab
 Name, phone, address, source (LSA call / LSA message / other), service chips, notes. **Save & Text Now** saves the lead, marks it contacted, and opens your texting app with the first-response template — the whole speed-to-lead move in about ten seconds.
 
 ### Templates tab
-Eight editable messages — first response (call / message / after-hours), no-reply check-in, quote bump, booking confirmation, day-before reminder, and review request — with `{name}`, `{service}`, `{company}`, `{owner}`, `{review_link}` placeholders filled automatically. A settings card holds your name, company name, and Google review link (reviews raise LSA ranking and lower cost-per-lead).
+Fifteen editable messages grouped by stage — **Getting the job** (first response for call / message / after-hours, no-reply check-in), **Closing the sale** (text the quote, quote bump, offer two days, three objection replies, $25-off final nudge, deposit ask), and **After booking** (confirmation, day-before reminder, review request) — with `{name}`, `{service}`, `{company}`, `{owner}`, `{quote}`, `{payment_link}`, `{review_link}` placeholders filled automatically. A settings card holds your name, company name, Google review link (reviews raise LSA ranking and lower cost-per-lead), and payment link.
 
 ### Done tab
 Completed and lost leads, with a stamp showing whether the review was requested. Restore or delete.
