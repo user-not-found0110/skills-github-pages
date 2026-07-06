@@ -160,6 +160,9 @@
 
   function firstName(name) { return String(name || '').trim().split(/\s+/)[0] || 'there'; }
 
+  // LSA message leads often arrive nameless — fall back to the phone number.
+  function displayName(lead) { return String(lead.name || '').trim() || lead.phone; }
+
   function serviceText(lead) {
     return (lead.services && lead.services.length)
       ? lead.services.join(', ').toLowerCase()
@@ -217,7 +220,7 @@
     saveLeads();
     renderAll();
     const label = STATUSES.find(s => s.key === status).label;
-    showToast(firstName(lead.name) + ' → ' + label +
+    showToast(displayName(lead) + ' → ' + label +
       (lead.nextFollowUpAt ? ' · follow up ' + prettyDate(lead.nextFollowUpAt) : ''));
   }
 
@@ -245,7 +248,7 @@
       <div class="lead-card s-${lead.status}${due ? ' overdue' : ''}${isExpanded ? ' expanded' : ''}" data-id="${lead.id}">
         <div class="lead-summary" data-action="toggle" role="button" tabindex="0">
           <div class="lead-main">
-            <div class="lead-name">${esc(lead.name)}</div>
+            <div class="lead-name">${esc(displayName(lead))}</div>
             <div class="lead-meta">${metaBits.join(' &middot; ')}</div>
           </div>
           <span class="status-chip s-${lead.status}">${status.label}</span>
@@ -269,8 +272,12 @@
             <a class="action-btn a-review" data-action="review" href="${smsHref(lead, 'review_request')}">&#11088; Ask for Review</a>
           </div>
 
-          <div class="detail-label">Dates &amp; Quote</div>
+          <div class="detail-label">Details</div>
           <div class="detail-fields">
+            <div class="form-group">
+              <label>Name</label>
+              <input type="text" data-field="name" value="${esc(lead.name || '')}" placeholder="Add when they give it">
+            </div>
             <div class="form-group">
               <label>Follow up on</label>
               <input type="date" data-field="nextFollowUpAt" value="${esc(lead.nextFollowUpAt || '')}">
@@ -380,11 +387,11 @@
 
       case 'restore':
         setStatus(lead, 'contacted');
-        showToast(firstName(lead.name) + ' is back in the pipeline');
+        showToast(displayName(lead) + ' is back in the pipeline');
         break;
 
       case 'delete':
-        if (confirm('Delete ' + lead.name + '? This cannot be undone.')) {
+        if (confirm('Delete ' + displayName(lead) + '? This cannot be undone.')) {
           leads = leads.filter(l => l.id !== lead.id);
           expanded.delete(lead.id);
           saveLeads();
@@ -403,7 +410,7 @@
     if (!lead) return;
     lead[field] = e.target.value;
     saveLeads();
-    if (field === 'nextFollowUpAt' || field === 'scheduledDate') {
+    if (field === 'nextFollowUpAt' || field === 'scheduledDate' || field === 'name') {
       renderAll();
       showToast('Saved');
     }
@@ -448,7 +455,6 @@
   function buildLeadFromForm() {
     const name = $('leadName').value.trim();
     const phone = $('leadPhone').value.trim();
-    if (!name) { showToast('Enter the customer\'s name'); return null; }
     if (!phone) { showToast('Enter a phone number'); return null; }
     return {
       id: uid(),
