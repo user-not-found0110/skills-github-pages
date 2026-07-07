@@ -232,6 +232,28 @@ input:focus, textarea:focus {
 
 .review-stamp { font-size: 12.5px; color: #1e8e4f; font-weight: 600; margin-top: 8px; }
 
+/* Offer-two-days row (assumptive close) */
+.offer-days {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;
+}
+.offer-days input[type="date"] { padding: 9px 8px; font-size: 14px; }
+.offer-days .offer-send { grid-column: 1 / -1; }
+
+/* Objection quick replies */
+.obj-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.obj-btns .mini-btn {
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  text-decoration: none; padding: 9px 4px; font-size: 12.5px;
+  color: var(--primary-light); border-color: rgba(26,127,212,0.45);
+}
+
+/* Template group headings */
+.tpl-group {
+  font-size: 12px; font-weight: 700; color: var(--text-sec);
+  text-transform: uppercase; letter-spacing: 0.8px; margin: 18px 2px 8px;
+}
+.tpl-group:first-child { margin-top: 4px; }
+
 /* === Template cards === */
 .template-card { margin-bottom: 12px; }
 .template-card .tpl-head {
