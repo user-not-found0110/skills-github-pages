@@ -9,6 +9,7 @@ Two separate, installable mobile-first apps for [Splash Pressure Washing](https:
 | **Wash Window** | `/wash-window/` | Check this week's forecast and flag the best days to schedule washes (no rain-outs). |
 | **Pace Gauge** | `/splash-pace-tracker/` | Track year-to-date revenue against seasonal targets. |
 | **Lead Tracker** | `/lead-tracker/` | Work Google LSA leads: instant first-response texts, follow-up due list, review requests. |
+| **Quote Follow-Up** | `/follow-up/` | Chase QuoteIQ quotes that went quiet: 6-touch text sequence, win-back list, pipeline $ and win-rate stats. |
 
 Each app installs as its own Android home-screen icon with its own name. They share nothing at runtime — separate manifests, separate service workers, separate localStorage. You can install one, both, or neither.
 
@@ -94,6 +95,58 @@ Fifteen editable messages grouped by stage — **Getting the job** (first respon
 Completed and lost leads, with a stamp showing whether the review was requested. Restore or delete.
 
 Everything is stored locally on the phone (localStorage, ~200-lead rolling history). No server, works offline.
+
+---
+
+## Quote Follow-Up — `/follow-up/`
+
+Built for the quotes that go quiet. Only ~2% of sales close on the first contact and ~80% close on the 5th touch or later — but almost everyone stops following up after one or two tries. QuoteIQ stays the system of record; this app is the follow-up machine.
+
+### The 6-touch sequence
+
+Every quote gets a text sequence anchored to the day it was **sent** (not the day you add it):
+
+| Touch | Day | Angle |
+|---|---|---|
+| 1 | 1 | Check-in — "any questions?" |
+| 2 | 4 | Social proof — reviews, veteran/firefighter owned, before-and-afters |
+| 3 | 8 | Urgency — schedule filling up |
+| 4 | 14 | New angle — why washing now protects the surface |
+| 5 | 21 | Breakup — "should I close your file?" (gets replies from ghosts) |
+| 6 | 30 | Last word — closing out open quotes this week |
+
+No discounts anywhere — the sequence leans on value, urgency, and social proof so your pricing holds.
+
+### Today tab
+Open the app, clear the list. Each due card shows the $ amount, an age pill (Day 6 / Day 12 / Day 23), and where it is in the sequence. Tap **Text** — your SMS app opens with the right message for that touch already filled in. When you come back, the card asks "Did the text go out?" — confirming advances the sequence and schedules the next touch. **Won** records the dollar amount; **Lost** asks why (price / timing / went elsewhere / ghosted); **Zzz** snoozes a day, three days, or a week. Timing and ghosted losses offer the Win-Back list instead of the graveyard.
+
+Backdate the "date sent" field when adding a quote from last week — the app drops it into the right spot in the sequence instead of starting over. A quote that's 30+ days old starts straight at the breakup text, which is exactly what an old ghost needs.
+
+### Win-Back list
+Quotes that finish the sequence unanswered aren't dead — they resurface automatically after 60 days with a seasonal text (spring: wash off the winter grime; fall: sharp for the holidays), then every 90 days after that.
+
+### Pipeline tab
+Every open quote with filters (Overdue / Fresh / Aging / Stale / Win-Back / Won / Lost) and sorts (next touch, oldest, biggest $). Expand a card for the follow-up log, situational replies ("they're stalling", "wants changes", commercial), a replied flag, and editable details.
+
+### Stats tab
+The headline number is **$ won after follow-ups** — money this app chased down. Plus win rate, open pipeline $, average touches to close, reply rate, why quotes are lost, and your daily streak for clearing the due list.
+
+### Import from QuoteIQ
+Export estimates (or contacts) from QuoteIQ to CSV → Add tab → pick the file. The app auto-matches the columns and shows you a preview to fix anything before importing. Duplicates (same phone number) and already-accepted quotes are skipped automatically.
+
+### Backup
+Everything lives only on the phone (localStorage, ~400-quote cap). The Add tab has one-tap **Export Backup (JSON)** and **Restore** — export monthly.
+
+### Files
+```
+follow-up/
+  index.html       UI (Today / Pipeline / Add / Stats / Templates)
+  app.js           Sequence engine, CSV import, stats, backup
+  style.css        Styles (self-contained)
+  manifest.json    Standalone PWA manifest
+  sw.js            Service worker (offline cache, scoped to /follow-up/)
+  icons/icon.svg   App icon
+```
 
 ---
 

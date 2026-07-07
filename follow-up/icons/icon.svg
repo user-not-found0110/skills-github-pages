@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a4d8c"/>
+      <stop offset="100%" style="stop-color:#1a7fd4"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#cfe6f7"/>
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="256" fill="url(#bg)"/>
+  <!-- Follow-up loop arrows around the bubble -->
+  <g fill="none" stroke="#9fd4f5" stroke-width="30" stroke-linecap="round">
+    <path d="M118 300 a146 146 0 0 1 60 -160"/>
+    <path d="M394 212 a146 146 0 0 1 -60 160"/>
+  </g>
+  <g fill="#9fd4f5">
+    <path d="M186 116 l-6 62 -52 -34 Z"/>
+    <path d="M326 396 l6 -62 52 34 Z"/>
+  </g>
+  <!-- Quote speech bubble -->
+  <path d="M162 158 h188 a26 26 0 0 1 26 26 v116 a26 26 0 0 1 -26 26 h-98 l-52 46 v-46 h-38 a26 26 0 0 1 -26 -26 v-116 a26 26 0 0 1 26 -26 Z" fill="url(#bubble)"/>
+  <!-- Dollar sign -->
+  <text x="256" y="286" font-family="Arial, Helvetica, sans-serif" font-size="120" font-weight="bold" fill="#0a4d8c" text-anchor="middle">$</text>
+  <!-- Closed-deal check dot -->
+  <circle cx="380" cy="380" r="66" fill="#2ecc71"/>
+  <path d="M348 382 l24 24 44 -48" fill="none" stroke="#ffffff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
