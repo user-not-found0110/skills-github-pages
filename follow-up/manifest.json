@@ -1,0 +1,25 @@
+{
+  "name": "Splash Quote Follow-Up",
+  "short_name": "Follow-Up",
+  "description": "Chase quotes that went quiet: a 6-touch text sequence, win-back list, and pipeline stats.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a4d8c",
+  "theme_color": "#0a4d8c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

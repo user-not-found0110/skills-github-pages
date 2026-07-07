@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a4d8c">
+  <meta name="description" content="Splash Pressure Washing - Follow up on every quote until it's won, lost, or in the win-back list">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Follow-Up">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="stylesheet" href="style.css">
+  <title>Splash PW - Quote Follow-Up</title>
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-content">
+      <img src="icons/icon.svg" alt="" class="header-icon">
+      <div>
+        <h1>Quote Follow-Up</h1>
+        <p class="header-sub">No quote left behind.</p>
+      </div>
+    </div>
+    <button id="installBtn" class="install-btn" style="display:none">Install App</button>
+  </header>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="alert"></div>
+
+  <main class="tab-content">
+
+    <!-- TAB 1: Today -->
+    <section id="tab-today" class="tab-panel active">
+      <div id="todayStats" class="stat-strip"></div>
+      <div id="streakCard"></div>
+
+      <h2 class="section-title due-title">Touches Due</h2>
+      <div id="todayList" class="lead-list"></div>
+      <div id="todayEmpty" class="empty-state" style="display:none">
+        <strong>Nothing due right now.</strong><br>
+        Fact: 80% of jobs close after 5+ follow-ups &mdash; and most companies quit after one.
+        This app makes sure you're the one still standing when the customer's ready.<br>
+        Add your open quotes in the <strong>Add</strong> tab.
+      </div>
+    </section>
+
+    <!-- TAB 2: Pipeline -->
+    <section id="tab-pipeline" class="tab-panel">
+      <h2 class="section-title">Pipeline</h2>
+      <p id="pipeSummary" class="pipe-summary"></p>
+      <div id="filterChips" class="filter-chips">
+        <button class="chip active" data-filter="all">All Open</button>
+        <button class="chip" data-filter="overdue">Overdue</button>
+        <button class="chip" data-filter="fresh">Fresh</button>
+        <button class="chip" data-filter="aging">Aging</button>
+        <button class="chip" data-filter="stale">Stale</button>
+        <button class="chip" data-filter="nurture">Win-Back</button>
+        <button class="chip" data-filter="won">Won</button>
+        <button class="chip" data-filter="lost">Lost</button>
+      </div>
+      <div class="seg-row sort-row" id="sortSeg">
+        <button type="button" class="seg-btn active" data-sort="next">Next touch</button>
+        <button type="button" class="seg-btn" data-sort="oldest">Oldest quote</button>
+        <button type="button" class="seg-btn" data-sort="biggest">Biggest $</button>
+      </div>
+      <div id="pipelineList" class="lead-list"></div>
+      <div id="pipelineEmpty" class="empty-state" style="display:none">
+        Nothing here yet. Quotes you add show up in the pipeline until they're won, lost, or moved to Win-Back.
+      </div>
+    </section>
+
+    <!-- TAB 3: Add -->
+    <section id="tab-add" class="tab-panel">
+      <h2 class="section-title">Add a Quote</h2>
+      <div class="card">
+        <div class="form-group">
+          <label for="qName">Customer Name</label>
+          <input type="text" id="qName" autocomplete="off" placeholder="Jane Smith">
+        </div>
+        <div class="form-group">
+          <label for="qPhone">Phone <span class="req">*</span></label>
+          <input type="tel" id="qPhone" inputmode="tel" autocomplete="off" placeholder="757-555-0123">
+        </div>
+        <div class="form-group">
+          <label for="qAmount">Quote $</label>
+          <input type="number" id="qAmount" inputmode="decimal" placeholder="385">
+        </div>
+        <div class="form-group">
+          <label>Service Quoted</label>
+          <div class="service-chips" id="serviceChips">
+            <button type="button" class="chip" data-value="House wash">House wash</button>
+            <button type="button" class="chip" data-value="Driveway">Driveway</button>
+            <button type="button" class="chip" data-value="Gutters">Gutters</button>
+            <button type="button" class="chip" data-value="Roof wash">Roof wash</button>
+            <button type="button" class="chip" data-value="Rust removal">Rust removal</button>
+            <button type="button" class="chip" data-value="Deck / fence">Deck / fence</button>
+            <button type="button" class="chip" data-value="Commercial">Commercial</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="qSentDate">Date Quote Was Sent</label>
+          <input type="date" id="qSentDate">
+          <p class="field-hint">The whole follow-up schedule hangs off this date &mdash; backdate it for quotes you sent last week.</p>
+        </div>
+        <div class="form-group">
+          <label for="qAddress">Address</label>
+          <input type="text" id="qAddress" autocomplete="off" placeholder="123 Oak Ridge Blvd, Chesapeake, VA">
+        </div>
+        <div class="form-group">
+          <label for="qNotes">Notes</label>
+          <textarea id="qNotes" rows="2" placeholder="2-story vinyl, heavy mold on north side, mentioned a graduation party in June..."></textarea>
+        </div>
+        <button id="saveTextBtn" class="btn-primary">Save &amp; Send First Touch</button>
+        <button id="saveBtn" class="btn-outline">Save Only</button>
+      </div>
+
+      <h2 class="section-title">Import from QuoteIQ</h2>
+      <div class="card">
+        <p class="import-hint">In QuoteIQ, export your estimates (or contacts) to CSV, then pick the file here.
+        You'll get a preview to check the columns before anything is imported. Duplicates are skipped automatically.</p>
+        <input type="file" id="csvFile" accept=".csv,text/csv" class="file-input">
+        <div id="mapCard" style="display:none"></div>
+        <div id="importSummary" style="display:none"></div>
+      </div>
+
+      <h2 class="section-title">Backup</h2>
+      <div class="card">
+        <p class="import-hint">Everything lives only on this phone. Export a backup once a month
+        (or before clearing browser data) &mdash; restoring it brings back every quote, template, and stat.</p>
+        <button id="exportBtn" class="btn-outline backup-btn">Export Backup (JSON)</button>
+        <label class="btn-outline backup-btn restore-label" for="restoreFile">Restore from Backup
+          <input type="file" id="restoreFile" accept=".json,application/json" style="display:none">
+        </label>
+      </div>
+    </section>
+
+    <!-- TAB 4: Stats -->
+    <section id="tab-stats" class="tab-panel">
+      <h2 class="section-title">Your Numbers</h2>
+      <div id="statsGrid"></div>
+      <div id="lossReasons"></div>
+      <div class="card method-card">
+        <strong>Why this works:</strong> only ~2% of sales happen on the first contact &mdash; about 80% happen
+        on the 5th touch or later. Almost every competitor stops following up after one or two tries.
+        Clearing this app's due list every day puts you in the 8% who don't.
+      </div>
+    </section>
+
+    <!-- TAB 5: Templates -->
+    <section id="tab-templates" class="tab-panel">
+      <h2 class="section-title">Your Info</h2>
+      <div class="card">
+        <div class="form-group">
+          <label for="setOwner">Your First Name</label>
+          <input type="text" id="setOwner" autocomplete="off" placeholder="Josh">
+        </div>
+        <div class="form-group">
+          <label for="setCompany">Company Name</label>
+          <input type="text" id="setCompany" autocomplete="off" placeholder="Splash Pressure Washing">
+        </div>
+        <div class="form-group">
+          <label for="setReviewLink">Google Review Link</label>
+          <input type="url" id="setReviewLink" autocomplete="off" placeholder="https://g.page/r/.../review">
+          <p class="field-hint">Used in the social-proof touch and the after-win review ask.</p>
+        </div>
+        <button id="saveSettingsBtn" class="btn-primary">Save Info</button>
+      </div>
+
+      <h2 class="section-title">Message Templates</h2>
+      <p class="section-hint">Placeholders fill in automatically: <code>{name}</code>, <code>{service}</code>,
+      <code>{quote}</code>, <code>{company}</code>, <code>{owner}</code>, <code>{review_link}</code>. Edits save as you type.</p>
+      <div id="templateCards"></div>
+      <button id="resetTemplatesBtn" class="btn-outline">Reset All Templates to Defaults</button>
+    </section>
+
+  </main>
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="today">
+      <span class="nav-icon-wrap">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span id="dueBadge" class="due-badge" style="display:none"></span>
+      </span>
+      Today
+    </button>
+    <button class="nav-btn" data-tab="pipeline">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      Pipeline
+    </button>
+    <button class="nav-btn" data-tab="add">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      Add
+    </button>
+    <button class="nav-btn" data-tab="stats">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Stats
+    </button>
+    <button class="nav-btn" data-tab="templates">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      Templates
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+</body>
+</html>
