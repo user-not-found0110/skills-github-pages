@@ -1,4 +1,4 @@
-const CACHE_NAME = 'splash-weather-v1';
+const CACHE_NAME = 'splash-weather-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -35,7 +35,15 @@ self.addEventListener('fetch', event => {
       url.includes('geocoding-api.open-meteo.com')) {
     return;
   }
+  // Network-first for the app shell so updates show up on reload; fall back to
+  // cache when offline. Refresh the cache copy on every successful fetch.
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
+    fetch(event.request)
+      .then(res => {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
