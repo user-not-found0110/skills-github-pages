@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#071a3a">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Pick the day that works best for your service.">
+  <title>Book your service day</title>
+  <link rel="icon" type="image/svg+xml" href="../icons/icon.svg">
+  <link rel="apple-touch-icon" href="../icons/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true">
+    <div class="aurora a1"></div>
+    <div class="aurora a2"></div>
+    <div class="aurora a3"></div>
+    <div class="grid-lines"></div>
+  </div>
+
+  <div class="shell">
+    <div class="demo-pill" id="demoPill" hidden>Demo mode &middot; nothing is sent</div>
+    <header class="brand">
+      <img src="../icons/icon.svg" alt="" class="brand-logo" width="44" height="44">
+      <div>
+        <div class="brand-name" id="bizName">&nbsp;</div>
+        <div class="brand-tag" id="bizTag">&nbsp;</div>
+      </div>
+    </header>
+
+    <main class="card" id="card">
+      <!-- Left: context + summary -->
+      <aside class="side">
+        <div class="side-top">
+          <div class="eyebrow" id="greeting">Online scheduling</div>
+          <h1 class="side-title" id="sideTitle">Pick your service day</h1>
+          <p class="side-text" id="sideText">Choose any open day &mdash; no account, no time slots. We'll take it from there.</p>
+          <div class="service-chip" id="serviceChip" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c3 4 6 7.2 6 10.5A6 6 0 0 1 6 13.5C6 10.2 9 7 12 3z"/></svg>
+            <span id="serviceText"></span>
+          </div>
+        </div>
+
+        <ul class="meta" id="meta">
+          <li>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+            <span id="windowText">&nbsp;</span>
+          </li>
+          <li class="meta-extra">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+            <span>Full-day service window &mdash; we'll confirm arrival with you</span>
+          </li>
+          <li class="meta-extra">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5.5c0 4.4-3 8-7 9.5-4-1.5-7-5.1-7-9.5V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            <span>No account or login needed</span>
+          </li>
+        </ul>
+
+        <div class="side-pick" id="sidePick" hidden>
+          <div class="side-pick-label" id="sidePickLabel">Your day</div>
+          <div class="side-pick-date" id="sidePickDate"></div>
+        </div>
+
+        <a class="side-call" id="sideCall" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h3.5l1.7 4.3-2.2 1.4a11 11 0 0 0 6.3 6.3l1.4-2.2L20 15.5V19a1.5 1.5 0 0 1-1.6 1.5A16.5 16.5 0 0 1 3.5 5.6 1.5 1.5 0 0 1 5 4z"/></svg>
+          <span>Questions? <strong id="sideCallNum"></strong></span>
+        </a>
+      </aside>
+
+      <!-- Right: steps -->
+      <section class="main" aria-live="polite">
+
+        <!-- Loading -->
+        <div class="view" id="view-loading">
+          <div class="sk sk-line w40"></div>
+          <div class="sk sk-line w70 tall"></div>
+          <div class="sk-grid" id="skGrid"></div>
+        </div>
+
+        <!-- Step 1: calendar -->
+        <div class="view" id="view-calendar" hidden>
+          <div class="view-head">
+            <div class="eyebrow" id="calEyebrow">Step 1 of 2</div>
+            <h2 id="calTitle">Choose your day</h2>
+          </div>
+
+          <div class="notice" id="calNotice" hidden></div>
+
+          <div class="month-bar">
+            <button class="icon-btn" id="prevMonth" aria-label="Previous month">
+              <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>
+            </button>
+            <div class="month-label" id="monthLabel"></div>
+            <button class="icon-btn" id="nextMonth" aria-label="Next month">
+              <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+            </button>
+          </div>
+
+          <div class="dow" aria-hidden="true">
+            <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+          </div>
+          <div class="days" id="days"></div>
+
+          <div class="legend">
+            <span><i class="lg lg-open"></i>Available</span>
+            <span><i class="lg lg-na"></i>Unavailable</span>
+            <span id="legendCurrent" hidden><i class="lg lg-current"></i>Your current day</span>
+          </div>
+
+          <div class="pick-bar" id="pickBar">
+            <div class="pick-bar-text">
+              <span class="pick-bar-label" id="pickBarLabel">Selected</span>
+              <span class="pick-bar-date" id="pickBarDate">Tap an open day</span>
+            </div>
+            <button class="btn btn-primary" id="continueBtn" disabled>
+              <span class="btn-text" id="continueText">Continue</span>
+              <svg class="btn-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              <span class="spinner" aria-hidden="true"></span>
+            </button>
+          </div>
+          <button class="text-btn keep-btn" id="keepBtn" hidden>Keep my current day</button>
+        </div>
+
+        <!-- Step 2: details -->
+        <div class="view" id="view-details" hidden>
+          <button class="back-btn" id="backBtn">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+            Back
+          </button>
+          <div class="view-head">
+            <div class="eyebrow">Step 2 of 2</div>
+            <h2>Your details</h2>
+          </div>
+
+          <div class="picked">
+            <div class="picked-tile">
+              <span class="picked-mon" id="pickedMon"></span>
+              <span class="picked-day" id="pickedDay"></span>
+            </div>
+            <div class="picked-text">
+              <div class="picked-label">Service day</div>
+              <div class="picked-date" id="pickedDate"></div>
+            </div>
+            <button class="text-btn" id="changePicked">Change</button>
+          </div>
+
+          <form id="detailsForm" novalidate autocomplete="on">
+            <div class="field" id="nameField">
+              <input id="fName" name="name" type="text" placeholder=" " autocomplete="name" maxlength="80" required>
+              <label for="fName">Full name</label>
+              <div class="field-error" id="nameError">Please enter your name.</div>
+            </div>
+            <div class="field">
+              <input id="fPhone" name="tel" type="tel" placeholder=" " autocomplete="tel" inputmode="tel" maxlength="30">
+              <label for="fPhone">Phone number</label>
+              <span class="opt">Optional</span>
+            </div>
+            <div class="field">
+              <input id="fAddress" name="street-address" type="text" placeholder=" " autocomplete="street-address" maxlength="200">
+              <label for="fAddress">Service address</label>
+              <span class="opt">Optional</span>
+            </div>
+            <button class="btn btn-primary btn-block" id="confirmBtn" type="submit">
+              <span class="btn-text" id="confirmText">Confirm</span>
+              <span class="spinner" aria-hidden="true"></span>
+            </button>
+            <p class="fine">Your details go only to <span class="biz-inline"></span> and are used just to confirm your service.</p>
+          </form>
+        </div>
+
+        <!-- Done -->
+        <div class="view" id="view-done" hidden>
+          <div class="done-head">
+            <div class="success-mark" aria-hidden="true">
+              <svg viewBox="0 0 52 52"><circle class="sm-ring" cx="26" cy="26" r="24"/><path class="sm-check" d="M15 27l7.5 7.5L37.5 19"/></svg>
+            </div>
+            <h2 id="doneTitle">You're all set!</h2>
+            <p class="done-sub" id="doneSub"></p>
+          </div>
+
+          <div class="ticket">
+            <div class="ticket-tile">
+              <span class="ticket-mon" id="ticketMon"></span>
+              <span class="ticket-day" id="ticketDay"></span>
+              <span class="ticket-wd" id="ticketWd"></span>
+            </div>
+            <div class="ticket-body">
+              <div class="ticket-label">Service day</div>
+              <div class="ticket-date" id="ticketDate"></div>
+              <div class="ticket-who" id="ticketWho"></div>
+            </div>
+          </div>
+
+          <div class="cal-actions">
+            <a class="btn btn-ghost" id="gcalBtn" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+              Google Calendar
+            </a>
+            <button class="btn btn-ghost" id="icsBtn">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+              Apple / Outlook
+            </button>
+          </div>
+
+          <div class="manage">
+            <button class="btn btn-soft" id="changeBtn">Change day</button>
+            <button class="btn btn-soft danger" id="cancelBtn">Cancel booking</button>
+          </div>
+          <p class="fine center">Plans change? Reopen this same link any time to move or cancel your day.</p>
+        </div>
+
+        <!-- Messages: expired, full, not found, error -->
+        <div class="view" id="view-message" hidden>
+          <div class="msg">
+            <div class="msg-icon" id="msgIcon"></div>
+            <h2 id="msgTitle"></h2>
+            <p id="msgText"></p>
+            <div class="msg-actions" id="msgActions"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <a class="foot-call" id="footCall" hidden></a>
+      <span id="footName"></span>
+    </footer>
+  </div>
+
+  <!-- Cancel confirmation -->
+  <div class="modal" id="cancelModal" hidden>
+    <div class="modal-scrim" data-close></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="cancelTitle">
+      <h3 id="cancelTitle">Cancel your booking?</h3>
+      <p id="cancelText"></p>
+      <div class="modal-actions">
+        <button class="btn btn-soft" data-close>Keep it</button>
+        <button class="btn btn-danger" id="cancelConfirm">
+          <span class="btn-text">Yes, cancel</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="config.js"></script>
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
