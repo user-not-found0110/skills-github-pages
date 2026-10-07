@@ -10,8 +10,77 @@ Two separate, installable mobile-first apps for [Splash Pressure Washing](https:
 | **Pace Gauge** | `/splash-pace-tracker/` | Track year-to-date revenue against seasonal targets. |
 | **Lead Tracker** | `/lead-tracker/` | Work Google LSA leads: instant first-response texts, follow-up due list, review requests. |
 | **Quote Follow-Up** | `/follow-up/` | Chase QuoteIQ quotes that went quiet: 6-touch text sequence, win-back list, pipeline $ and win-rate stats. |
+| **Scheduler** | `/scheduler/` | Owner app: set the days you work, block days off, text a customer a booking link, get alerted when they pick, change, or cancel a day. |
+| **Booking page** | `/book/?l=…` | What the customer sees: only the days in the window you chose, pick one, enter a name (phone and address optional). No account. |
 
-Each app installs as its own Android home-screen icon with its own name. They share nothing at runtime — separate manifests, separate service workers, separate localStorage. You can install one, both, or neither.
+Each app installs as its own Android home-screen icon with its own name. They share nothing at runtime — separate manifests, separate service workers, separate localStorage. You can install one, both, or neither. (Scheduler and the booking page are the exception: they're two halves of one tool and share a small booking server — see below.)
+
+---
+
+## Scheduler + Booking page — `/scheduler/` and `/book/`
+
+A Calendly-style day picker built for washes: customers pick a **day**, not a time slot.
+
+### How it flows
+1. **Scheduler → Send link.** Optional customer name and service, then choose what they can see: *October*, *November*, *Next 2 weeks*, *Next 30 days*, or a custom range. The preview shows how many open days that window has. **Create link** → **Text it** (your SMS app opens with a ready message), **Share…**, or **Copy**.
+2. **The customer opens the link.** They see only that window. Pick October and October is all they get, with no arrows to other months. Only days you're open are tappable. They tap a day, enter their **name (required)** and optionally **phone** and **service address**, and confirm. They can add the day to Google Calendar or Apple/Outlook.
+3. **You get alerted.** You get an email, an optional instant phone push, and an all-day event on your Google Calendar. The Scheduler's **Bookings** tab shows a red badge and the new activity.
+4. **Changes later.** The same link is the customer's booking page. Reopening it shows their day with **Change day** and **Cancel booking**. Every change or cancellation alerts you again and moves or removes the calendar event.
+
+### Availability tab
+- **Days you work:** weekday toggles (default Mon–Sat).
+- **Calendar:** tap any day to block it; tap again to reopen it. Tapping a normal day off opens it as a one-off extra day. Booked days show a green count; full days get an amber ring. Day taps and range blocks come with an **Undo**.
+- **Block a date range:** for vacations, equipment down, or a rain week.
+- **Jobs per day:** a day disappears from every link once it has this many bookings. The default is 1.
+- **Earliest booking:** same day, tomorrow, 2–3 days out, or 1–2 weeks out.
+
+Changes save automatically and apply to every link immediately, including links you already sent.
+
+### Demo mode vs. live
+Out of the box (with `book/config.js` empty) both pages run in **demo mode**. Everything is stored on the one device, so you can click through the whole flow, but customers can't use the links and nothing is emailed.
+
+To go live, the booking data needs somewhere shared to live. GitHub Pages only serves static files, so the server is a free **Google Apps Script** that runs in your own Google account and stores bookings in a Google Sheet you own. One-time setup is about 10 minutes on a computer, and the steps are also in **Scheduler → Settings**:
+
+1. Open [sheets.new](https://sheets.new) and name the sheet **Splash Bookings**. Then **Extensions → Apps Script** and delete the sample code.
+2. Paste in all of [`scheduler/backend/Code.js`](scheduler/backend/Code.js). Change `ADMIN_PASSCODE` from `'CHANGE-ME'` to your own passcode (6+ characters). Save.
+3. Select **setup** in the function menu → **Run** → approve the permissions. Google shows an "unverified app" warning because it's your own private script. Choose **Advanced → Go to … (unsafe) → Allow**.
+4. **Deploy → New deployment →** gear → **Web app**. Set **Execute as: Me** and **Who has access: Anyone**. Deploy, then copy the Web app URL (ends in `/exec`).
+5. In **Scheduler → Settings → Connection**, paste the URL, press **Connect**, and enter your passcode.
+6. For short customer links, put the same URL in [`book/config.js`](book/config.js). Until then, links still work but carry the server ID, which makes them noticeably longer.
+
+If you edit the script later, use **Deploy → Manage deployments → Edit → Version: New version** so the URL stays the same.
+
+### Alerts — read this
+- **Email** goes to the address in Settings, or to your Google account if that's blank. Gmail may not ring your phone for a message your own account sends to itself, so either use a different address (like a business email) or turn on push.
+- **Phone push** uses the free [ntfy](https://ntfy.sh) app: tap **Generate** in Settings, save, subscribe to that topic in the ntfy app, then **Send test alert**. Topic names are effectively the password, so keep the generated one private.
+- **Google Calendar:** bookings become all-day events and move or disappear when the customer changes or cancels. You can turn this off in Settings.
+
+### Things to know
+- **The link is the key.** Anyone holding a customer's link can see and change that one booking. Nobody can see anyone else's details. Links are random 10-character IDs.
+- **Customers aren't notified when *you* cancel.** They don't leave an email. Cancelling from the Scheduler offers a pre-written text to send them, and they'll also see the cancellation if they reopen their link.
+- **The default link address looks like `…github.io/skills-github-pages/book/?l=…`.** For a more professional link, point a subdomain such as `book.splashwashing.com` at GitHub Pages using a custom domain. It's a DNS change and nothing in the apps needs to change.
+- **Google's script server isn't instant.** Expect a brief loading shimmer when the page opens and a second or two after **Confirm**.
+- **Quotas:** a free Google account can send email to 100 recipients a day through Apps Script. That's far above what booking alerts need.
+- **Spam guard:** a single link allows 8 changes per hour. The owner passcode locks for 15 minutes after 10 wrong tries.
+- Your bookings live in the Google Sheet (**Links** and **Activity** tabs), so you can view, sort, or export them there anytime.
+
+### Files
+```
+book/
+  index.html       Customer booking page
+  app.js           Calendar, details form, change/cancel, add-to-calendar
+  style.css        Styles
+  api.js           Talks to the booking server (or runs demo mode)
+  config.js        Your Apps Script URL goes here
+scheduler/
+  index.html       Owner app (Bookings / Availability / Send link / Settings)
+  app.js           Owner app logic
+  style.css        Styles
+  manifest.json    Standalone PWA manifest
+  sw.js            Service worker (offline app shell, scoped to /scheduler/)
+  icons/icon.svg   App icon
+  backend/Code.js  Booking server — paste into Google Apps Script
+```
 
 ---
 

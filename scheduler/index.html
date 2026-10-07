@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#050b18">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Splash Pressure Washing - send booking links, set available days, see bookings">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Scheduler">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <title>Splash Scheduler</title>
+</head>
+<body>
+  <div class="bg" aria-hidden="true"><div class="glow g1"></div><div class="glow g2"></div><div class="grid"></div></div>
+
+  <header class="top">
+    <div class="top-brand">
+      <img src="icons/icon.svg" alt="" class="top-logo" width="38" height="38">
+      <div>
+        <div class="top-title">Scheduler</div>
+        <div class="top-sub" id="topSub">Splash Pressure Washing</div>
+      </div>
+    </div>
+    <div class="top-right">
+      <span class="conn" id="conn"><i></i><span id="connText">Demo</span></span>
+      <button class="round-btn" id="installBtn" hidden aria-label="Install app">
+        <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+      </button>
+      <button class="round-btn" id="refreshBtn" aria-label="Refresh">
+        <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="content">
+    <div class="demo-banner" id="demoBanner" hidden>
+      <div>
+        <strong>Demo mode.</strong> Everything stays on this device so you can try it out. Customers can't use these links yet.
+      </div>
+      <button class="link-btn" data-goto="settings">Go live</button>
+    </div>
+
+    <!-- ===== Bookings ===== -->
+    <section class="tab active" id="tab-bookings">
+      <div class="stats">
+        <div class="stat"><div class="stat-num" id="statUpcoming">&ndash;</div><div class="stat-label">Upcoming</div></div>
+        <div class="stat"><div class="stat-num" id="statWeek">&ndash;</div><div class="stat-label">Next 7 days</div></div>
+        <div class="stat"><div class="stat-num" id="statWaiting">&ndash;</div><div class="stat-label">Links out</div></div>
+      </div>
+
+      <div class="section-head">
+        <h2>Activity</h2>
+        <span class="pill-new" id="newCount" hidden></span>
+      </div>
+      <div class="activity" id="activity"></div>
+      <button class="more-btn" id="moreActivity" hidden>Show more</button>
+
+      <div class="section-head"><h2>Upcoming jobs</h2></div>
+      <div id="upcoming"></div>
+
+      <details class="past-list" id="pastWrap">
+        <summary>Past &amp; cancelled</summary>
+        <div id="past"></div>
+      </details>
+    </section>
+
+    <!-- ===== Availability ===== -->
+    <section class="tab" id="tab-availability">
+      <div class="section-head">
+        <h2>Availability</h2>
+        <span class="save-state" id="saveState"></span>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Days you work</div>
+        <p class="hint">Customers can only pick these weekdays. Block or open single days on the calendar below.</p>
+        <div class="weekdays" id="weekdays"></div>
+      </div>
+
+      <div class="panel two-col">
+        <div>
+          <div class="panel-title">Jobs per day</div>
+          <div class="stepper">
+            <button id="capDown" aria-label="Fewer jobs per day">&minus;</button>
+            <span id="capVal">1</span>
+            <button id="capUp" aria-label="More jobs per day">+</button>
+          </div>
+          <p class="hint">A day closes once it has this many bookings.</p>
+        </div>
+        <div>
+          <div class="panel-title">Earliest booking</div>
+          <div class="select-wrap">
+            <select id="minNotice">
+              <option value="0">Same day</option>
+              <option value="1">Tomorrow</option>
+              <option value="2">2 days out</option>
+              <option value="3">3 days out</option>
+              <option value="7">1 week out</option>
+              <option value="14">2 weeks out</option>
+            </select>
+          </div>
+          <p class="hint">Customers can't grab a day sooner than this.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="cal-head">
+          <button class="round-btn" id="aPrev" aria-label="Previous month"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <div class="cal-month" id="aMonth"></div>
+          <button class="round-btn" id="aNext" aria-label="Next month"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+        </div>
+        <p class="hint center">Tap a day to block it. Tap it again to open it back up.</p>
+        <div class="dow"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+        <div class="adays" id="adays"></div>
+        <div class="alegend">
+          <span><i class="k k-open"></i>Open</span>
+          <span><i class="k k-blocked"></i>Blocked</span>
+          <span><i class="k k-off"></i>Day off</span>
+          <span><i class="k k-booked"></i>Booked</span>
+          <span><i class="k k-full"></i>Full</span>
+        </div>
+        <div class="panel-actions">
+          <button class="btn btn-soft" id="blockRangeBtn">
+            <svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M9 14l6 4M15 14l-6 4"/></svg>
+            Block a date range
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Send link ===== -->
+    <section class="tab" id="tab-send">
+      <div class="panel hero-panel">
+        <div class="panel-kicker">New booking link</div>
+        <h2 class="panel-h">Send a customer your calendar</h2>
+        <p class="hint">They'll only see the days you choose here, and they can only pick a day you're open.</p>
+
+        <label class="lbl" for="lnCustomer">Customer name <span>optional</span></label>
+        <input class="inp" id="lnCustomer" type="text" placeholder="Sarah Johnson" autocomplete="off" maxlength="60">
+
+        <label class="lbl" for="lnService">Service <span>optional &middot; shown to the customer</span></label>
+        <input class="inp" id="lnService" type="text" placeholder="House wash + driveway" autocomplete="off" maxlength="80">
+        <div class="quick" id="serviceQuick"></div>
+
+        <div class="lbl">Days they can see</div>
+        <div class="chips" id="rangeChips"></div>
+        <div class="custom-range" id="customRange" hidden>
+          <label>From<input class="inp" type="date" id="customStart"></label>
+          <label>To<input class="inp" type="date" id="customEnd"></label>
+        </div>
+        <div class="range-preview" id="rangePreview"></div>
+
+        <button class="btn btn-primary btn-block" id="createLinkBtn">
+          <span class="btn-text">Create link</span>
+          <span class="spinner"></span>
+        </button>
+      </div>
+
+      <div class="section-head">
+        <h2>Sent links</h2>
+        <div class="seg" id="linkFilter">
+          <button class="on" data-f="active">Active</button>
+          <button data-f="all">All</button>
+        </div>
+      </div>
+      <div id="linkList"></div>
+    </section>
+
+    <!-- ===== Settings ===== -->
+    <section class="tab" id="tab-settings">
+      <div class="panel">
+        <div class="panel-title">Your business</div>
+        <label class="lbl" for="sBiz">Business name</label>
+        <input class="inp" id="sBiz" type="text" maxlength="80">
+        <label class="lbl" for="sTag">Tagline <span>shown under your name</span></label>
+        <input class="inp" id="sTag" type="text" maxlength="120">
+        <label class="lbl" for="sPhone">Phone for customers <span>optional</span></label>
+        <input class="inp" id="sPhone" type="tel" maxlength="30" placeholder="(757) 555-0100">
+        <label class="lbl" for="sOwner">Your first name <span>used in link texts</span></label>
+        <input class="inp" id="sOwner" type="text" maxlength="40" placeholder="First name">
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Alerts when a customer books, changes, or cancels</div>
+        <label class="lbl" for="sEmail">Email alerts to</label>
+        <input class="inp" id="sEmail" type="email" maxlength="120" placeholder="Your Google account email">
+        <p class="hint">Tip: Gmail may skip the phone alert for mail your own account sends to itself. Use a different address here (like your business email) or turn on phone push below.</p>
+
+        <label class="lbl" for="sNtfy">Phone push (free ntfy app) <span>optional</span></label>
+        <div class="inp-row">
+          <input class="inp" id="sNtfy" type="text" maxlength="64" placeholder="Topic name" autocomplete="off" spellcheck="false">
+          <button class="btn btn-soft" id="genTopic">Generate</button>
+        </div>
+        <details class="howto">
+          <summary>How to set up phone push</summary>
+          <ol>
+            <li>Install <strong>ntfy</strong> from the Play Store or App Store.</li>
+            <li>Tap <strong>Generate</strong> above, then <strong>Save settings</strong>.</li>
+            <li>In ntfy, tap <strong>+</strong>, type the exact topic name, and subscribe.</li>
+            <li>Press <strong>Send test alert</strong> below.</li>
+          </ol>
+          <p>Anyone who knows a topic name can read it, so keep the generated name private.</p>
+        </details>
+
+        <label class="toggle">
+          <input type="checkbox" id="sCal">
+          <span class="toggle-ui"></span>
+          <span>Add bookings to my Google Calendar <em>as all-day events (moved or removed automatically)</em></span>
+        </label>
+
+        <div class="panel-actions">
+          <button class="btn btn-soft" id="testAlertBtn"><span class="btn-text">Send test alert</span><span class="spinner"></span></button>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-block sticky-save" id="saveSettingsBtn">
+        <span class="btn-text">Save settings</span><span class="spinner"></span>
+      </button>
+
+      <div class="panel" id="connPanel">
+        <div class="panel-title">Connection</div>
+        <div class="conn-line" id="connLine"></div>
+        <div id="urlBox">
+          <label class="lbl" for="sUrl">Google Apps Script web app URL</label>
+          <input class="inp mono" id="sUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec" spellcheck="false" autocomplete="off">
+          <div class="panel-actions">
+            <button class="btn btn-soft" id="connectBtn">Connect</button>
+            <button class="btn btn-soft" id="disconnectBtn" hidden>Back to demo</button>
+          </div>
+        </div>
+        <div id="liveOnly" hidden>
+          <div class="panel-actions">
+            <button class="btn btn-soft" id="passBtn">Change passcode</button>
+            <button class="btn btn-soft" id="signOutBtn">Lock this device</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="setupPanel">
+        <div class="panel-title">Go live (one time, about 10 minutes on a computer)</div>
+        <p class="hint">Bookings, emails, and calendar events run on a free Google Apps Script in your own Google account. No monthly fees.</p>
+        <ol class="steps">
+          <li>Open <a href="https://sheets.new" target="_blank" rel="noopener">sheets.new</a> to make a new Google Sheet. Name it <strong>Splash Bookings</strong>.</li>
+          <li>In the sheet: <strong>Extensions &rarr; Apps Script</strong>. Delete the sample code.</li>
+          <li>Copy the booking server code and paste it in.
+            <div class="panel-actions"><button class="btn btn-soft" id="copyCodeBtn">Copy server code</button><a class="btn btn-soft" href="backend/Code.js" target="_blank" rel="noopener">View code</a></div>
+          </li>
+          <li>Near the top, change <code>'CHANGE-ME'</code> to your own passcode (6+ characters). Press save.</li>
+          <li>Pick <strong>setup</strong> in the function menu and press <strong>Run</strong>. Approve the permissions. Google warns that it hasn't verified the app because it's your own private script. Choose <strong>Advanced &rarr; Go to &hellip; (unsafe)</strong>, then <strong>Allow</strong>.</li>
+          <li><strong>Deploy &rarr; New deployment</strong>, gear icon &rarr; <strong>Web app</strong>. Set <em>Execute as: Me</em> and <em>Who has access: Anyone</em>. Press <strong>Deploy</strong> and copy the Web app URL.</li>
+          <li>Paste the URL in <strong>Connection</strong> above, press <strong>Connect</strong>, and enter your passcode.</li>
+          <li>For short, clean customer links, put the same URL in <code>book/config.js</code> in your GitHub repo.</li>
+        </ol>
+        <p class="hint">After changing the script later, use <strong>Deploy &rarr; Manage deployments &rarr; Edit &rarr; New version</strong> so the URL stays the same.</p>
+      </div>
+
+      <div class="panel" id="demoPanel" hidden>
+        <div class="panel-title">Demo data</div>
+        <p class="hint">Clears the sample bookings and links on this device.</p>
+        <div class="panel-actions"><button class="btn btn-soft danger" id="resetDemoBtn">Reset demo</button></div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button class="tb on" data-tab="bookings">
+      <svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4M8.5 15l2.2 2 4.8-4.5"/></svg>
+      <span>Bookings</span><b class="badge" id="badge" hidden></b>
+    </button>
+    <button class="tb" data-tab="availability">
+      <svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M8 14h2M14 14h2M8 17.5h2"/></svg>
+      <span>Availability</span>
+    </button>
+    <button class="tb" data-tab="send">
+      <svg viewBox="0 0 24 24"><path d="M21 3L10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5 21 3z"/></svg>
+      <span>Send link</span>
+    </button>
+    <button class="tb" data-tab="settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+  <!-- Passcode lock -->
+  <div class="lock" id="lock" hidden>
+    <div class="lock-card">
+      <img src="icons/icon.svg" alt="" width="64" height="64" class="lock-logo">
+      <h1>Scheduler</h1>
+      <p id="lockText">Enter the passcode you set in your Google Apps Script.</p>
+      <form id="lockForm">
+        <input class="inp" id="lockInput" type="password" placeholder="Passcode" autocomplete="current-password" required>
+        <div class="lock-err" id="lockErr"></div>
+        <button class="btn btn-primary btn-block" id="lockBtn" type="submit"><span class="btn-text">Unlock</span><span class="spinner"></span></button>
+      </form>
+      <button class="link-btn" id="lockDemo">Use demo mode instead</button>
+    </div>
+  </div>
+
+  <!-- Bottom sheet -->
+  <div class="sheet" id="sheet" hidden>
+    <div class="sheet-scrim" data-close></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true">
+      <div class="sheet-grab"></div>
+      <div id="sheetBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status"><span id="toastText"></span><button id="toastAction" hidden></button></div>
+
+  <script src="../book/config.js"></script>
+  <script src="backend/Code.js"></script>
+  <script src="../book/api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
