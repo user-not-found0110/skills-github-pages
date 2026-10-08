@@ -134,7 +134,8 @@
           !$('view-details').hidden || !$('cancelModal').hidden)) return;
       apply(data, opts);
     }).catch(function (err) {
-      if (seq !== loadSeq || opts.background) return;
+      // A quiet refresh ignores network hiccups, but a removed link is final.
+      if (seq !== loadSeq || (opts.background && err.code !== 'not_found')) return;
       if (err.code === 'not_found') {
         showMessage({ icon: 'link', title: 'Link not active', text: err.message });
       } else {
@@ -434,6 +435,7 @@
       phone: $('fPhone').value.trim(), address: $('fAddress').value.trim()
     }).then(function (data) {
       busy(btn, false);
+      loadSeq++; // a refresh that started before this booking can't show the old state
       S.selected = '';
       apply(data, { fresh: true });
     }).catch(function (err) {
@@ -460,6 +462,7 @@
     $('continueText').textContent = 'Saving…';
     SplashApi.call('link.book', { id: S.id, date: ds }).then(function (data) {
       busy(btn, false);
+      loadSeq++; // a refresh that started before the move can't bring back the old day
       S.mode = 'new';
       S.selected = '';
       apply(data, { fresh: true, changed: true });
@@ -509,6 +512,7 @@
     busy(btn, true);
     SplashApi.call('link.cancel', { id: S.id }).then(function (data) {
       busy(btn, false);
+      loadSeq++; // a refresh that started before the cancel can't bring the booking back
       $('cancelModal').hidden = true;
       apply(data);
     }).catch(function (err) {

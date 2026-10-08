@@ -254,13 +254,13 @@
           <li>Copy the booking server code and paste it in. Scroll to the bottom: the last line must be <code>// ---- END OF FILE (Splash Booking backend) ----</code>. Delete anything below it.
             <div class="panel-actions"><button class="btn btn-soft" id="copyCodeBtn">Copy server code</button><a class="btn btn-soft" href="backend/Code.js" target="_blank" rel="noopener">View code</a></div>
           </li>
-          <li>Near the top, change <code>'CHANGE-ME'</code> to your own passcode (6+ characters). Press save.</li>
-          <li>Pick <strong>setup</strong> in the function menu and press <strong>Run</strong>. Approve the permissions. Google warns that it hasn't verified the app because it's your own private script. Choose <strong>Advanced &rarr; Go to &hellip; (unsafe)</strong>. If Google lists checkboxes, tick <strong>Select all</strong>, then <strong>Continue</strong> or <strong>Allow</strong>.</li>
+          <li>Near the top, change <code>'CHANGE-ME'</code> to your own passcode: 10 or more characters that aren't a word, name, date, or phone number. Press save.</li>
+          <li><strong>setup</strong> is already picked in the function menu next to <strong>Run</strong>. Press <strong>Run</strong> and approve the permissions. Google warns that it hasn't verified the app because it's your own private script. Choose <strong>Advanced &rarr; Go to &hellip; (unsafe)</strong>. If Google lists checkboxes, tick <strong>Select all</strong>, then <strong>Continue</strong> or <strong>Allow</strong>.</li>
           <li><strong>Deploy &rarr; New deployment</strong>, gear icon &rarr; <strong>Web app</strong>. Set <em>Execute as: Me</em> and <em>Who has access: Anyone</em>. Press <strong>Deploy</strong> and copy the Web app URL.</li>
           <li>Paste the URL in <strong>Connection</strong> above, press <strong>Connect</strong>, and enter your passcode.</li>
           <li>For short, clean customer links, put the same URL in <code>book/config.js</code> in your GitHub repo.</li>
         </ol>
-        <p class="hint">After changing the script later, use <strong>Deploy &rarr; Manage deployments &rarr; Edit &rarr; New version</strong> so the URL stays the same.</p>
+        <p class="hint">Updating to newer server code later: paste over the old code the same way and save (no need to change the passcode or run setup again), then <strong>Deploy &rarr; Manage deployments &rarr; Edit &rarr; Version: New version &rarr; Deploy</strong>. The URL stays the same.</p>
       </div>
 
       <div class="panel" id="demoPanel" hidden>
@@ -319,7 +319,7 @@
   <script src="../cleanup.js"></script>
   <script src="../book/config.js"></script>
   <script src="backend/Code.js"></script>
-  <script src="../book/api.js"></script>
+  <script src="../book/api.js" data-owner-app></script>
   <script src="app.js"></script>
 </body>
 </html>

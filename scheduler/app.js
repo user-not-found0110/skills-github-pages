@@ -27,6 +27,12 @@
     store.set(KEY_AUTH, token ? JSON.stringify({ url: Api.apiUrl, token: token }) : '');
   }
 
+  // The server answers 'bad_action' to requests it doesn't know: it's running older code.
+  var OUTDATED = 'Your Google Apps Script is running older code. On a computer, open it, select all the code and ' +
+    'paste in the new server code (scheduler/backend/Code.js), save, then Deploy \u2192 Manage deployments \u2192 ' +
+    'Edit \u2192 Version: New version \u2192 Deploy.';
+  function errText(err) { return err.code === 'bad_action' ? OUTDATED : err.message; }
+
   var S = {
     token: Api.mode === 'live' ? readAuth() : 'demo',
     cfg: null,
@@ -45,6 +51,7 @@
     seenAt: store.get(KEY_SEEN),
     cfgDirty: false,
     settingsDirty: false,
+    filled: null,     // Settings form values as last filled in from the config
     saving: false,
     savePending: false,
     saveTimer: null
@@ -233,8 +240,8 @@
     opts = opts || {};
     if (S.refreshing) return S.refreshing;
     $('refreshBtn').classList.add('spin');
-    var seq = S.mutSeq;
-    S.refreshing = Api.call('admin.load', { token: S.token, site: siteUrl() }).then(function (data) {
+    var seq = S.mutSeq, token = S.token;
+    S.refreshing = Api.call('admin.load', { token: token, site: siteUrl() }).then(function (data) {
       S.refreshing = null;
       // Something was saved while this was loading: its data may predate that, so load again.
       if (seq !== S.mutSeq) return refresh(opts);
@@ -244,9 +251,21 @@
     }).catch(function (err) {
       S.refreshing = null;
       $('refreshBtn').classList.remove('spin');
-      if (err.code === 'signed_out' || err.code === 'not_setup') {
-        if (err.code === 'signed_out') { S.token = ''; saveAuth(''); }
+      if (err.code === 'signed_out') {
+        // Only sign out if the token that failed is still the current one. A
+        // passcode change here, or a sign-in in another tab, replaces it mid-load.
+        var stored = readAuth();
+        if (S.token !== token || (stored && stored !== token)) {
+          if (S.token === token) S.token = stored;
+          return refresh(opts);
+        }
+        S.token = '';
+        saveAuth('');
         showLock(err.message);
+        return;
+      }
+      if (err.code === 'not_setup' || err.code === 'bad_action') {
+        showLock(errText(err));
         return;
       }
       if (!opts.quiet) toast(err.message, 'Retry', function () { refresh(); });
@@ -532,13 +551,21 @@
       S.mutSeq++;
       if (S.savePending || JSON.stringify(S.cfg) !== sent) {
         S.savePending = false;
-        return saveConfig(); // same base: the server merges only this device's edits
+        // The server has merged everything up to `sent`, so only edits made since
+        // then are new. Reusing the old base would make an edit that put a value
+        // back (Undo, + then -) look like no change and the server would keep the first save.
+        S.base = JSON.parse(sent);
+        return saveConfig();
       }
       S.cfg = res.config;
       S.base = clone(res.config);
       S.cfgDirty = false;
       setSaveState('ok');
+      // Show what the server kept, including changes made on another device.
       $('topSub').textContent = S.cfg.businessName;
+      renderAvailability();
+      renderRangePreview();
+      if (!S.settingsDirty) fillSettings();
       return res;
     }, function (err) {
       S.saving = false;
@@ -581,7 +608,18 @@
   $('aNext').addEventListener('click', function () { S.aMonth = monthAdd(S.aMonth, 1); renderMonth(); });
 
   function snapshot() { return { blocked: S.cfg.blocked.slice(), opened: S.cfg.opened.slice() }; }
-  function restore(snap) { S.cfg.blocked = snap.blocked; S.cfg.opened = snap.opened; }
+  // Undo takes back only what that one tap or range changed. Days another device
+  // blocked or opened since then are left alone.
+  function undoChange(before, after) {
+    ['blocked', 'opened'].forEach(function (k) {
+      var was = {}, now = {};
+      before[k].forEach(function (d) { was[d] = true; });
+      after[k].forEach(function (d) { now[d] = true; });
+      var list = S.cfg[k].filter(function (d) { return !(now[d] && !was[d]); });
+      before[k].forEach(function (d) { if (!now[d] && list.indexOf(d) < 0) list.push(d); });
+      S.cfg[k] = list.sort();
+    });
+  }
   function without(arr, d) { return arr.filter(function (x) { return x !== d; }); }
   function closeDay(d) {
     S.cfg.opened = without(S.cfg.opened, d);
@@ -603,13 +641,16 @@
     var d = b.getAttribute('data-date');
     var before = snapshot();
     var wasOpen = Core.isWorkingDay(S.cfg, d);
-    if (wasOpen) closeDay(d); else openDay(d, true);
+    var wasBlocked = S.cfg.blocked.indexOf(d) >= 0;
+    // Unblocking a day only lifts the block: a range-blocked day off goes back to off.
+    if (wasOpen) closeDay(d); else openDay(d, !wasBlocked);
+    var after = snapshot();
     renderMonth(d);
     cfgChanged();
     var cnt = Core.bookedCounts(S.links)[d] || 0;
-    var msg = (wasOpen ? 'Blocked ' : 'Opened ') + shortDate(d) +
+    var msg = (wasOpen ? 'Blocked ' : wasBlocked ? 'Unblocked ' : 'Opened ') + shortDate(d) +
       (wasOpen && cnt ? ' · ' + cnt + ' booking kept' : '');
-    toast(msg, 'Undo', function () { restore(before); renderMonth(d); cfgChanged(); });
+    toast(msg, 'Undo', function () { undoChange(before, after); renderMonth(d); cfgChanged(); });
   });
 
   $('blockRangeBtn').addEventListener('click', function () {
@@ -629,11 +670,12 @@
           if (D.diffDays(a, b) > 366) { toast('Keep it under a year.'); return; }
           var before = snapshot();
           for (var d = a; d <= b; d = D.addDays(d, 1)) { if (block) blockDay(d); else openDay(d, false); }
+          var after = snapshot();
           S.aMonth = a.slice(0, 7);
           renderMonth();
           cfgChanged();
           closeSheet();
-          toast((block ? 'Blocked ' : 'Unblocked ') + md(a) + ' – ' + md(b), 'Undo', function () { restore(before); renderMonth(); cfgChanged(); });
+          toast((block ? 'Blocked ' : 'Unblocked ') + md(a) + ' – ' + md(b), 'Undo', function () { undoChange(before, after); renderMonth(); cfgChanged(); });
         }
         $('brBlock').onclick = function () { apply(true); };
         $('brOpen').onclick = function () { apply(false); };
@@ -871,6 +913,16 @@
   }
 
   // ---------- Settings ----------
+  var SETTINGS_FIELDS = { businessName: 'sBiz', tagline: 'sTag', phone: 'sPhone', ownerName: 'sOwner',
+    notifyEmail: 'sEmail', ntfyTopic: 'sNtfy', addToCalendar: 'sCal' };
+  function readForm() {
+    var out = {};
+    Object.keys(SETTINGS_FIELDS).forEach(function (k) {
+      var el = $(SETTINGS_FIELDS[k]);
+      out[k] = el.type === 'checkbox' ? el.checked : el.value.trim();
+    });
+    return out;
+  }
   function fillSettings() {
     var c = S.cfg;
     $('sBiz').value = c.businessName;
@@ -881,6 +933,7 @@
     $('sEmail').placeholder = S.account ? S.account + ' (default)' : 'Your Google account email';
     $('sNtfy').value = c.ntfyTopic;
     $('sCal').checked = c.addToCalendar;
+    S.filled = readForm();
   }
   ['sBiz', 'sTag', 'sPhone', 'sOwner', 'sEmail', 'sNtfy', 'sCal'].forEach(function (id) {
     $(id).addEventListener('input', function () { S.settingsDirty = true; });
@@ -894,14 +947,14 @@
     S.settingsDirty = true;
   });
 
+  // Only fields changed on the form are saved. A field left alone keeps whatever
+  // the server has, even if another device changed it after this form was filled.
   function collectSettings() {
-    S.cfg.businessName = $('sBiz').value.trim() || S.cfg.businessName;
-    S.cfg.tagline = $('sTag').value.trim();
-    S.cfg.phone = $('sPhone').value.trim();
-    S.cfg.ownerName = $('sOwner').value.trim();
-    S.cfg.notifyEmail = $('sEmail').value.trim();
-    S.cfg.ntfyTopic = $('sNtfy').value.trim();
-    S.cfg.addToCalendar = $('sCal').checked;
+    var now = readForm(), was = S.filled || {};
+    Object.keys(now).forEach(function (k) {
+      if (now[k] === was[k] || (k === 'businessName' && !now[k])) return;
+      S.cfg[k] = now[k];
+    });
   }
 
   function saveSettings() {
@@ -998,9 +1051,11 @@
     Api.call('admin.logout', { token: token }).catch(function () { /* already signed out */ });
     showLock();
   });
-  $('passBtn').addEventListener('click', function () {
+  $('passBtn').addEventListener('click', function () { openPassSheet(); });
+  function openPassSheet() {
     openSheet(
-      '<h3>Change passcode</h3><p>Used to unlock the Scheduler on your devices.</p>' +
+      '<h3>Change passcode</h3><p>Used to unlock the Scheduler on your devices. Use ' + Core.minPasscode +
+      ' or more characters that aren\u2019t a word, name, date, or phone number.</p>' +
       '<label class="lbl" for="pw1">New passcode</label><input class="inp" id="pw1" type="password" autocomplete="new-password">' +
       '<label class="lbl" for="pw2">Type it again</label><input class="inp" id="pw2" type="password" autocomplete="new-password">' +
       '<div class="sheet-actions two"><button class="btn btn-soft" data-close>Cancel</button>' +
@@ -1008,7 +1063,7 @@
       function () {
         $('pwSave').onclick = function () {
           var a = $('pw1').value, b = $('pw2').value;
-          if (a.length < 6) { toast('Use at least 6 characters.'); return; }
+          if (a.length < Core.minPasscode) { toast('Use at least ' + Core.minPasscode + ' characters.'); return; }
           if (a !== b) { toast('Those don’t match.'); return; }
           busy($('pwSave'), true);
           Api.call('admin.setPasscode', { token: S.token, newKey: a }).then(function (res) {
@@ -1018,12 +1073,12 @@
             toast('Passcode changed. Other devices will need it to sign in again.');
           }, function (err) {
             busy($('pwSave'), false);
-            toast(err.message);
+            toast(errText(err));
           });
         };
       }
     );
-  });
+  }
   $('copyCodeBtn').addEventListener('click', function () {
     fetch('backend/Code.js', { cache: 'no-store' }).then(function (r) {
       if (!r.ok) throw new Error();
@@ -1065,9 +1120,12 @@
       $('lock').hidden = true;
       $('lockInput').value = '';
       applyLoad(data);
+      if (key.length < Core.minPasscode) {
+        toast('Your passcode is short and easier to guess. Use ' + Core.minPasscode + '+ characters.', 'Change', openPassSheet);
+      }
     }, function (err) {
       busy(btn, false);
-      $('lockErr').textContent = err.message;
+      $('lockErr').textContent = errText(err);
       var card = document.querySelector('.lock-card');
       card.classList.remove('shake');
       void card.offsetWidth;

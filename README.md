@@ -36,24 +36,34 @@ Changes save automatically and apply to every link immediately, including links 
 - **A customer's link** shows that one customer their own booking and nothing else. Anyone holding that link can see and change that one booking, so it's as private as the text you sent it in. Link IDs are 10 random characters and can't realistically be guessed.
 - **The pages themselves are public files.** GitHub Pages on a free account can't password-protect a site, so anyone can load the Scheduler's screens. Without your passcode they get the lock screen and no data. No customer data is stored in this repo.
 - **The server address in `book/config.js` is public on purpose.** The booking page needs it. It does nothing without your passcode or a customer's link.
-- **Your passcode is the one real key.** After 10 wrong tries the server stops accepting passcodes for 15 minutes. That slows guessing but doesn't stop a weak passcode from being guessed eventually, so use 10+ characters that aren't a word or a date. A stranger making wrong guesses also locks you out for those 15 minutes.
-- **The Scheduler remembers your passcode on your phone** so you don't retype it. On a device other people use, tap **Settings → Lock this device** when you're done.
+- **Your passcode is the one real key.** New passcodes need 10 or more characters. Pick ones that aren't a word, name, date, or phone number. If you sign in with a shorter one saved before this rule, the Scheduler suggests changing it.
+- **Ten wrong passcodes pause every sign-in for 15 minutes**, the right passcode included, so nobody can keep guessing at full speed. Devices already signed in keep working. A stranger can trigger the pause on purpose. If that blocks you on a new device, open Apps Script and run **setup** to lift it right away. With `'CHANGE-ME'` still in the code, running setup doesn't touch your passcode.
+- **Each device signs in once.** After that it keeps its own random sign-in key; the passcode itself isn't stored on the phone. **Settings → Lock this device** signs that device out. Changing the passcode signs out every other device.
+- **Private notes:** anything you put in (parentheses) in a link's customer name stays in the Scheduler, for example `Sarah Johnson (gate code 4411)` or `Sarah (cell (757) 555-0142)`. The customer only sees `Sarah Johnson`.
 
 ---
 
 ## Live setup (Google Apps Script)
 GitHub Pages only serves static files, so the booking data lives in a free **Google Apps Script** that runs in your own Google account and stores bookings in a Google Sheet you own. One-time setup is about 10 minutes on a computer. The steps are also in **Scheduler → Settings**.
 
-1. Open [sheets.new](https://sheets.new) and name the sheet **Splash Bookings**. Then **Extensions → Apps Script** and delete the sample code.
-2. Paste in all of [`scheduler/backend/Code.js`](scheduler/backend/Code.js). Change `ADMIN_PASSCODE` from `'CHANGE-ME'` to your own passcode. Save.
-3. Select **setup** in the function menu → **Run** → approve the permissions. Google shows an "unverified app" warning because it's your own private script. Choose **Advanced → Go to … (unsafe) → Allow**.
+1. Open [sheets.new](https://sheets.new) and name the sheet **Splash Bookings**. Then **Extensions → Apps Script**. Click in the code, press **Ctrl+A** (Cmd+A on a Mac) and **Delete**, so the editor is completely empty. Leftover sample code causes a "Syntax error" on the last line.
+2. Paste in all of [`scheduler/backend/Code.js`](scheduler/backend/Code.js). The last line must be `// ---- END OF FILE (Splash Booking backend) ----`; delete anything below it. Change `ADMIN_PASSCODE` from `'CHANGE-ME'` to your own passcode (10+ characters). Save.
+3. **setup** is already picked in the function menu next to **Run**. Press **Run** and approve the permissions. Google shows an "unverified app" warning because it's your own private script. Choose **Advanced → Go to … (unsafe)**. If Google lists checkboxes, tick **Select all**, then **Continue** or **Allow**.
 4. **Deploy → New deployment →** gear → **Web app**. Set **Execute as: Me** and **Who has access: Anyone**. Deploy, then copy the Web app URL (ends in `/exec`).
 5. Put that URL in [`book/config.js`](book/config.js). That takes every device live at once and keeps customer links short. This site's `config.js` already has it.
 6. Open the Scheduler and enter your passcode.
 
-If you edit the script later, use **Deploy → Manage deployments → Edit → Version: New version** so the URL stays the same.
-
 With `book/config.js` empty, both pages run in **demo mode**. Everything is stored on the one device, so you can click through the whole flow, but customers can't use the links and nothing is emailed.
+
+### Updating the server code
+When a change needs new server code, the pull request says so. On a computer:
+
+1. Open the **Splash Bookings** sheet → **Extensions → Apps Script**.
+2. Click in the code, press **Ctrl+A** (Cmd+A on a Mac) and **Delete**. Paste in all of the new [`scheduler/backend/Code.js`](scheduler/backend/Code.js) and check the END OF FILE line is last. Press save. Leave `'CHANGE-ME'` as it is: your passcode is already saved, so you don't change it or run setup again.
+3. **Deploy → Manage deployments →** pencil (Edit) → **Version: New version** → **Deploy**. The URL stays the same. If Google asks for permission again, allow it.
+4. Open your Web app URL in a browser. It shows `"version"` with the number that's now live.
+
+Update the server code first and merge the pull request after. The new server code still works with the Scheduler that's live before the merge, so nothing breaks in between. If you merge first, the Scheduler's passcode screen tells you the server code is out of date until you update it.
 
 ## Alerts — read this
 - **Email** goes to the address in Settings, or to your Google account if that's blank. Gmail may not ring your phone for a message your own account sends to itself, so either use a different address (like a business email) or turn on push.

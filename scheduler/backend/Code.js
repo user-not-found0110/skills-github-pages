@@ -12,15 +12,18 @@
  *   2. Click in the code, press Ctrl+A (Cmd+A on a Mac) and Delete so the
  *      editor is completely empty, then paste this whole file. The last line
  *      must be the "END OF FILE" comment; delete anything below it.
- *   3. Change ADMIN_PASSCODE below. Save.
- *   4. Pick "setup" in the function menu, press Run, approve the permissions
- *      (if Google lists checkboxes, tick "Select all").
+ *   3. Change ADMIN_PASSCODE below (10+ characters). Save.
+ *   4. "setup" is picked in the function menu next to Run. Press Run and
+ *      approve the permissions (if Google lists checkboxes, tick "Select all").
  *   5. Deploy -> New deployment -> type "Web app"
  *        Execute as: Me    Who has access: Anyone    -> Deploy.
  *   6. Copy the Web app URL into the Scheduler app (Settings -> Connection).
  *
- * After editing this code later: Deploy -> Manage deployments -> Edit (pencil)
- * -> Version: New version -> Deploy. The URL stays the same.
+ * Updating to a newer version of this file: paste over the old code the same
+ * way (step 2) and Save. You don't need to change the passcode or run setup
+ * again. Then Deploy -> Manage deployments -> Edit (pencil) -> Version: New
+ * version -> Deploy. The URL stays the same. Opening the URL in a browser shows
+ * the version that's live.
  *
  * The same file also runs in the browser for the apps' demo mode, so all the
  * Apps Script-only calls live inside functions.
@@ -28,13 +31,50 @@
 
 // ---- Your settings ---------------------------------------------------------
 
-// Passcode for the Scheduler app (6+ characters). Running `setup` stores it in
+// Passcode for the Scheduler app (10+ characters). Running `setup` stores it in
 // Script Properties; after that you can change it from the app. Forgot it?
-// Put a new one here and run `setup` again.
+// Put a new one here and run `setup` again (that also signs out every device).
 const ADMIN_PASSCODE = 'CHANGE-ME';
 
 // Decides what "today" is and which day calendar events land on.
 const TIME_ZONE = 'America/New_York';
+
+
+// Run this once from the editor: it asks for permissions, adds the sheet tabs
+// and saves your passcode. It's the first function in this file so the editor's
+// Run menu has it picked already. Running it again is safe; it also lifts a
+// wrong-passcode lockout.
+function setup() {
+  var props = props_();
+  var min = BookingCore.minPasscode;
+  var fromCode = ADMIN_PASSCODE !== 'CHANGE-ME' ? String(ADMIN_PASSCODE) : '';
+  if (fromCode && fromCode.length < min) {
+    throw new Error('ADMIN_PASSCODE needs at least ' + min + ' characters. Change it, save, then run setup again.');
+  }
+  var stored = props.getProperty('ADMIN_PASSCODE');
+  if (!stored && !fromCode) {
+    throw new Error('First change ADMIN_PASSCODE at the top of this file (' + min + '+ characters), save, then run setup again.');
+  }
+  if (fromCode && fromCode !== stored) {
+    props.setProperty('ADMIN_PASSCODE', fromCode);
+    props.deleteProperty('TOKENS'); // a new passcode signs out every device
+  }
+
+  var ss = spreadsheet_();
+  ensureSheet_(ss, 'Links', LINK_COLS_);
+  ensureSheet_(ss, 'Activity', ACTIVITY_COLS_);
+  var blank = ss.getSheetByName('Sheet1');
+  if (blank && blank.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(blank);
+  if (!props.getProperty('CONFIG')) props.setProperty('CONFIG', JSON.stringify(BookingCore.defaults()));
+
+  // Touch each service so every permission is granted now, not on the first booking.
+  CalendarApp.getDefaultCalendar().getName();
+  MailApp.getRemainingDailyQuota();
+  CacheService.getScriptCache().remove('authFails');
+
+  Logger.log('Setup complete. Bookings sheet: ' + ss.getUrl());
+  Logger.log('Next: Deploy -> New deployment -> Web app (Execute as: Me, Who has access: Anyone).');
+}
 
 
 // ---- Booking logic (shared with the browser demo) ---------------------------
@@ -48,6 +88,8 @@ var BookingCore = (function () {
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
     'August', 'September', 'October', 'November', 'December'];
   var ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  var VERSION = 2;
+  var MIN_PASSCODE = 10; // for new passcodes; one saved before this rule still works
 
   var DEFAULTS = {
     businessName: 'Splash Pressure Washing',
@@ -220,9 +262,15 @@ var BookingCore = (function () {
     }
   }
 
-  // Notes the owner puts in (parentheses) on a link's customer name stay private.
+  // Notes the owner puts in (parentheses) on a link's customer name stay private,
+  // including notes with parentheses inside them, like a (757) phone number.
   function publicName(s) {
-    return String(s || '').replace(/\([^)]*\)?/g, ' ').replace(/\s+/g, ' ').trim();
+    s = String(s || '');
+    for (var prev = null; prev !== s;) {
+      prev = s;
+      s = s.replace(/\([^()]*\)/g, ' ');
+    }
+    return s.replace(/\(.*$/, ' ').replace(/\)/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   // What the customer's page gets. Never includes other customers' details.
@@ -472,7 +520,7 @@ var BookingCore = (function () {
 
   ACTIONS['admin.setPasscode'] = function (req, env) {
     var next = String(req.newKey || '');
-    if (next.length < 6) fail('weak', 'Use at least 6 characters.');
+    if (next.length < MIN_PASSCODE) fail('weak', 'Use at least ' + MIN_PASSCODE + ' characters.');
     // Signs out every other device; this one gets a fresh token.
     return { token: env.setPasscode(next) };
   };
@@ -497,8 +545,14 @@ var BookingCore = (function () {
     var action = String(req.action || '');
     try {
       if (!ACTIONS[action]) fail('bad_action', 'Unknown request.');
-      if (action.indexOf('admin.') === 0 && action !== 'admin.login' && !env.checkToken(String(req.token || ''))) {
-        fail('signed_out', 'Please enter your passcode again.');
+      if (action.indexOf('admin.') === 0 && action !== 'admin.login') {
+        if (req.token || req.key === undefined) {
+          if (!env.checkToken(String(req.token || ''))) fail('signed_out', 'Please enter your passcode again.');
+        } else {
+          // Schedulers from before sign-in tokens send the passcode with every
+          // request. Same check and lockout as signing in.
+          env.checkAdmin(String(req.key || ''));
+        }
       }
       var data = ACTIONS[action](req, env) || {};
       data.ok = true;
@@ -511,6 +565,8 @@ var BookingCore = (function () {
   }
 
   return {
+    version: VERSION,
+    minPasscode: MIN_PASSCODE,
     handle: handle,
     fail: fail,
     describe: describe,
@@ -542,7 +598,10 @@ function doPost(e) {
 // GET works too (?q=<json>); handy for checking the deployment in a browser.
 function doGet(e) {
   var q = e && e.parameter && e.parameter.q;
-  if (!q) return json_({ ok: true, service: 'Splash Booking', time: new Date().toISOString() });
+  if (!q) {
+    return json_({ ok: true, service: 'Splash Booking', version: BookingCore.version,
+      ready: !!storedPasscode_(), time: new Date().toISOString() });
+  }
   var req = {};
   try { req = JSON.parse(q); } catch (err) { req = {}; }
   return respond_(req);
@@ -563,38 +622,6 @@ function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
-/** Run this once from the editor (it asks for permissions), then deploy. */
-function setup() {
-  var props = props_();
-  if (ADMIN_PASSCODE !== 'CHANGE-ME' && ADMIN_PASSCODE.length < 6) {
-    throw new Error('ADMIN_PASSCODE needs at least 6 characters. Change it, save, then run setup again.');
-  }
-  var stored = props.getProperty('ADMIN_PASSCODE');
-  var fromCode = ADMIN_PASSCODE !== 'CHANGE-ME' ? ADMIN_PASSCODE : '';
-  if (!stored && !fromCode) {
-    throw new Error('First change ADMIN_PASSCODE at the top of this file (6+ characters), save, then run setup again.');
-  }
-  if (fromCode && fromCode !== stored) {
-    props.setProperty('ADMIN_PASSCODE', fromCode);
-    props.deleteProperty('TOKENS'); // a new passcode signs out every device
-  }
-
-  var ss = spreadsheet_();
-  ensureSheet_(ss, 'Links', LINK_COLS_);
-  ensureSheet_(ss, 'Activity', ACTIVITY_COLS_);
-  var blank = ss.getSheetByName('Sheet1');
-  if (blank && blank.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(blank);
-  if (!props.getProperty('CONFIG')) props.setProperty('CONFIG', JSON.stringify(BookingCore.defaults()));
-
-  // Touch each service so every permission is granted now, not on the first booking.
-  CalendarApp.getDefaultCalendar().getName();
-  MailApp.getRemainingDailyQuota();
-  CacheService.getScriptCache().remove('authFails');
-
-  Logger.log('Setup complete. Bookings sheet: ' + ss.getUrl());
-  Logger.log('Next: Deploy -> New deployment -> Web app (Execute as: Me, Who has access: Anyone).');
-}
-
 /** Optional: run from the editor to check email (and push, if set up) without the app. */
 function sendTestAlert() {
   var cfg = BookingCore.normalizeConfig(JSON.parse(props_().getProperty('CONFIG') || '{}'));
@@ -607,9 +634,17 @@ var ACTIVITY_COLS_ = ['at', 'linkId', 'type', 'date', 'from', 'name', 'by'];
 
 function props_() { return PropertiesService.getScriptProperties(); }
 
+// The passcode setup() saved. If setup was never run, the one typed into this
+// file works too and is saved for next time.
 function storedPasscode_() {
-  var p = props_().getProperty('ADMIN_PASSCODE');
-  return p && p.length >= 6 ? p : '';
+  var props = props_();
+  var p = props.getProperty('ADMIN_PASSCODE');
+  if (p && p.length >= 6) return p;
+  if (ADMIN_PASSCODE !== 'CHANGE-ME' && String(ADMIN_PASSCODE).length >= BookingCore.minPasscode) {
+    props.setProperty('ADMIN_PASSCODE', String(ADMIN_PASSCODE));
+    return String(ADMIN_PASSCODE);
+  }
+  return '';
 }
 
 function withLock_(fn, optional) {
@@ -645,16 +680,31 @@ function gasEnv_() {
     now: function () { return new Date().toISOString(); },
     newId: newId_,
     lock: function (fn, opts) { return withLock_(fn, !!(opts && opts.optional)); },
+    // Ten wrong passcodes pause every sign-in for 15 minutes, the right passcode
+    // included, so nobody can keep guessing at full speed. Devices already
+    // signed in keep working. Running setup() in the editor lifts the pause.
     checkAdmin: function (key) {
       var stored = storedPasscode_();
-      if (!stored) BookingCore.fail('not_setup', 'Finish setup first: set ADMIN_PASSCODE in the script and run setup.');
-      var cache = CacheService.getScriptCache();
-      var fails = +(cache.get('authFails') || 0);
-      if (fails >= 10) BookingCore.fail('locked', 'Too many wrong passcodes. Wait 15 minutes and try again.');
-      if (key !== stored) {
-        cache.put('authFails', String(fails + 1), 900);
-        BookingCore.fail('bad_key', 'That passcode is not right.');
+      if (!stored) {
+        BookingCore.fail('not_setup', 'Setup isn\u2019t finished. In Apps Script, set ADMIN_PASSCODE at the top of the code ' +
+          '(10+ characters), save, then pick \u201csetup\u201d next to Run and press Run.');
       }
+      var cache = CacheService.getScriptCache();
+      var locked = 'Too many wrong passcodes. Wait 15 minutes and try again.';
+      if (+(cache.get('authFails') || 0) >= 10) BookingCore.fail('locked', locked);
+      // Counted under the script lock so a burst of parallel guesses can't slip past the limit.
+      var result = withLock_(function () {
+        var fails = +(cache.get('authFails') || 0);
+        if (fails >= 10) return 'locked';
+        if (key === stored) {
+          if (fails) cache.remove('authFails');
+          return 'ok';
+        }
+        cache.put('authFails', String(fails + 1), 900);
+        return 'wrong';
+      });
+      if (result === 'locked') BookingCore.fail('locked', locked);
+      if (result !== 'ok') BookingCore.fail('bad_key', 'That passcode is not right.');
     },
     checkToken: function (token) {
       if (!/^[0-9a-f]{64}$/.test(token)) return false;

@@ -472,7 +472,7 @@ button { font: inherit; color: inherit; }
 /* ---------- Toast / demo ---------- */
 .toast {
   position: fixed; left: 50%; top: max(16px, env(safe-area-inset-top)); z-index: 60;
-  max-width: calc(100vw - 32px);
+  width: max-content; max-width: calc(100vw - 32px);
   padding: 12px 18px; border-radius: 14px;
   background: rgba(11, 21, 38, .94); color: #fff; font-size: 14px; font-weight: 500;
   box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .6);

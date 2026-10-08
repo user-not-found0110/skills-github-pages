@@ -436,7 +436,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 /* ---------- Toast ---------- */
 .toast {
   position: fixed; left: 50%; bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom)); z-index: 90;
-  display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 32px);
+  display: flex; align-items: center; gap: 14px; width: max-content; max-width: calc(100vw - 32px);
   padding: 12px 16px; border-radius: 14px; font-size: 14px; font-weight: 500;
   background: rgba(240, 246, 255, .97); color: #0b1526; box-shadow: 0 20px 40px -14px rgba(0, 0, 0, .7);
   transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: opacity .25s, transform .35s var(--ease);

@@ -8,6 +8,9 @@
   var DEMO_KEY = 'splashBooking.demo.v1';
   var SCRIPT_URL = /^https:\/\/script\.google\.com\/(?:a\/macros\/[^/\s]+|macros)\/s\/([A-Za-z0-9_-]{20,150})\/exec$/;
   var thisScript = document.currentScript && document.currentScript.src;
+  // The Scheduler marks its <script> tag. Decided by the page, not the address,
+  // which can be disguised (sch%65duler is the same folder to the web server).
+  var ownerApp = !!(document.currentScript && document.currentScript.hasAttribute('data-owner-app'));
 
   function readLocal(key) {
     try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
@@ -17,7 +20,10 @@
   // owner app never takes it from the URL: a crafted link must not be able to
   // point the Scheduler (and its sign-in) at someone else's script.
   function fromParam() {
-    if (/\/scheduler\//.test(location.pathname)) return '';
+    if (ownerApp) return '';
+    var path;
+    try { path = decodeURIComponent(location.pathname); } catch (e) { return ''; }
+    if (/\/scheduler\//i.test(path)) return '';
     var s = new URLSearchParams(location.search).get('s');
     return s && /^[A-Za-z0-9_-]{20,150}$/.test(s) ? 'https://script.google.com/macros/s/' + s + '/exec' : '';
   }
