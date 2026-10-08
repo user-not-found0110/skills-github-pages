@@ -9,9 +9,12 @@
  * Setup (about 10 minutes, on a computer — the Scheduler app's Settings tab
  * walks through it):
  *   1. Go to sheets.new  ->  Extensions  ->  Apps Script.
- *   2. Delete what's there and paste this whole file.
+ *   2. Click in the code, press Ctrl+A (Cmd+A on a Mac) and Delete so the
+ *      editor is completely empty, then paste this whole file. The last line
+ *      must be the "END OF FILE" comment; delete anything below it.
  *   3. Change ADMIN_PASSCODE below. Save.
- *   4. Pick "setup" in the function menu, press Run, approve the permissions.
+ *   4. Pick "setup" in the function menu, press Run, approve the permissions
+ *      (if Google lists checkboxes, tick "Select all").
  *   5. Deploy -> New deployment -> type "Web app"
  *        Execute as: Me    Who has access: Anyone    -> Deploy.
  *   6. Copy the Web app URL into the Scheduler app (Settings -> Connection).
@@ -217,6 +220,11 @@ var BookingCore = (function () {
     }
   }
 
+  // Notes the owner puts in (parentheses) on a link's customer name stay private.
+  function publicName(s) {
+    return String(s || '').replace(/\([^)]*\)?/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
   // What the customer's page gets. Never includes other customers' details.
   function publicLink(cfg, link, links, today) {
     var history = link.history || [];
@@ -225,7 +233,7 @@ var BookingCore = (function () {
       business: { name: cfg.businessName, tagline: cfg.tagline, phone: cfg.phone },
       link: {
         id: link.id,
-        customer: link.customer,
+        customer: publicName(link.customer),
         service: link.service,
         start: link.start,
         end: link.end,
@@ -301,8 +309,8 @@ var BookingCore = (function () {
       var type = !wasBooked ? 'booked' : (date !== prev ? 'changed' : 'updated');
       link.name = name;
       if (hasInfo) {
-        link.phone = clean(req.phone, 30);
-        link.address = clean(req.address, 200);
+        link.phone = clean(req.phone, 30) || link.phone;
+        link.address = clean(req.address, 200) || link.address;
       }
       link.status = 'booked';
       link.date = date;
@@ -373,10 +381,32 @@ var BookingCore = (function () {
     };
   };
 
+  // `base` is the config the device last loaded. Only what the device actually
+  // changed since then is applied, so edits made on another phone or computer
+  // in the meantime survive.
+  function mergeConfig(current, base, client) {
+    var out = {};
+    Object.keys(DEFAULTS).forEach(function (k) {
+      if (Array.isArray(DEFAULTS[k])) {
+        var b = toSet(base[k]), c = toSet(client[k]);
+        var keep = current[k].filter(function (x) { return !(b[x] && !c[x]); });
+        client[k].forEach(function (x) { if (!b[x] && keep.indexOf(x) < 0) keep.push(x); });
+        out[k] = keep;
+      } else {
+        out[k] = JSON.stringify(client[k]) === JSON.stringify(base[k]) ? current[k] : client[k];
+      }
+    });
+    return out;
+  }
+
   ACTIONS['admin.saveConfig'] = function (req, env) {
     return env.lock(function () {
+      var today = env.today();
       var current = loadConfig(env);
-      var next = normalizeConfig(req.config, env.today());
+      var client = normalizeConfig(req.config, today);
+      var next = req.base && typeof req.base === 'object'
+        ? normalizeConfig(mergeConfig(current, normalizeConfig(req.base, today), client), today)
+        : client;
       if (!next.siteUrl) next.siteUrl = current.siteUrl;
       env.store.setConfig(next);
       return { config: next };
@@ -443,7 +473,22 @@ var BookingCore = (function () {
   ACTIONS['admin.setPasscode'] = function (req, env) {
     var next = String(req.newKey || '');
     if (next.length < 6) fail('weak', 'Use at least 6 characters.');
-    env.setPasscode(next);
+    // Signs out every other device; this one gets a fresh token.
+    return { token: env.setPasscode(next) };
+  };
+
+  // The passcode is checked only here. A signed-in device keeps working with its
+  // token even while wrong-passcode attempts have new sign-ins locked out.
+  ACTIONS['admin.login'] = function (req, env) {
+    env.checkAdmin(String(req.key || ''));
+    var token = env.issueToken();
+    var data = ACTIONS['admin.load'](req, env);
+    data.token = token;
+    return data;
+  };
+
+  ACTIONS['admin.logout'] = function (req, env) {
+    env.revokeToken(String(req.token || ''));
     return {};
   };
 
@@ -452,7 +497,9 @@ var BookingCore = (function () {
     var action = String(req.action || '');
     try {
       if (!ACTIONS[action]) fail('bad_action', 'Unknown request.');
-      if (action.indexOf('admin.') === 0) env.checkAdmin(String(req.key || ''));
+      if (action.indexOf('admin.') === 0 && action !== 'admin.login' && !env.checkToken(String(req.token || ''))) {
+        fail('signed_out', 'Please enter your passcode again.');
+      }
       var data = ACTIONS[action](req, env) || {};
       data.ok = true;
       return data;
@@ -519,12 +566,18 @@ function json_(obj) {
 /** Run this once from the editor (it asks for permissions), then deploy. */
 function setup() {
   var props = props_();
+  if (ADMIN_PASSCODE !== 'CHANGE-ME' && ADMIN_PASSCODE.length < 6) {
+    throw new Error('ADMIN_PASSCODE needs at least 6 characters. Change it, save, then run setup again.');
+  }
   var stored = props.getProperty('ADMIN_PASSCODE');
-  var fromCode = ADMIN_PASSCODE !== 'CHANGE-ME' && ADMIN_PASSCODE.length >= 6 ? ADMIN_PASSCODE : '';
+  var fromCode = ADMIN_PASSCODE !== 'CHANGE-ME' ? ADMIN_PASSCODE : '';
   if (!stored && !fromCode) {
     throw new Error('First change ADMIN_PASSCODE at the top of this file (6+ characters), save, then run setup again.');
   }
-  if (fromCode && fromCode !== stored) props.setProperty('ADMIN_PASSCODE', fromCode);
+  if (fromCode && fromCode !== stored) {
+    props.setProperty('ADMIN_PASSCODE', fromCode);
+    props.deleteProperty('TOKENS'); // a new passcode signs out every device
+  }
 
   var ss = spreadsheet_();
   ensureSheet_(ss, 'Links', LINK_COLS_);
@@ -559,21 +612,39 @@ function storedPasscode_() {
   return p && p.length >= 6 ? p : '';
 }
 
+function withLock_(fn, optional) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(optional ? 1500 : 20000)) {
+    if (optional) return null;
+    BookingCore.fail('busy', "We're finishing another request \u2014 please try again in a moment.");
+  }
+  try {
+    var out = fn();
+    SpreadsheetApp.flush(); // land every sheet write before the next request can read
+    return out;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Signed-in devices hold a random token; only its SHA-256 is stored.
+function tokenHash_(token) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token, Utilities.Charset.UTF_8)
+    .map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+}
+function readTokens_() {
+  try { return JSON.parse(props_().getProperty('TOKENS') || '[]'); } catch (e) { return []; }
+}
+function writeTokens_(list) { props_().setProperty('TOKENS', JSON.stringify(list.slice(-25))); }
+function newToken_() { return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ''); }
+
 function gasEnv_() {
   return {
     store: sheetStore_(),
     today: function () { return Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd'); },
     now: function () { return new Date().toISOString(); },
     newId: newId_,
-    lock: function (fn, opts) {
-      var optional = !!(opts && opts.optional);
-      var lock = LockService.getScriptLock();
-      if (!lock.tryLock(optional ? 1500 : 20000)) {
-        if (optional) return null;
-        BookingCore.fail('busy', "We're finishing another request — please try again in a moment.");
-      }
-      try { return fn(); } finally { lock.releaseLock(); }
-    },
+    lock: function (fn, opts) { return withLock_(fn, !!(opts && opts.optional)); },
     checkAdmin: function (key) {
       var stored = storedPasscode_();
       if (!stored) BookingCore.fail('not_setup', 'Finish setup first: set ADMIN_PASSCODE in the script and run setup.');
@@ -585,7 +656,31 @@ function gasEnv_() {
         BookingCore.fail('bad_key', 'That passcode is not right.');
       }
     },
-    setPasscode: function (next) { props_().setProperty('ADMIN_PASSCODE', next); },
+    checkToken: function (token) {
+      if (!/^[0-9a-f]{64}$/.test(token)) return false;
+      var h = tokenHash_(token);
+      return readTokens_().some(function (t) { return t.h === h; });
+    },
+    issueToken: function () {
+      var token = newToken_();
+      withLock_(function () {
+        writeTokens_(readTokens_().concat([{ h: tokenHash_(token), at: new Date().toISOString() }]));
+      });
+      return token;
+    },
+    revokeToken: function (token) {
+      if (!token) return;
+      var h = tokenHash_(token);
+      withLock_(function () { writeTokens_(readTokens_().filter(function (t) { return t.h !== h; })); });
+    },
+    setPasscode: function (next) {
+      var token = newToken_();
+      withLock_(function () {
+        props_().setProperty('ADMIN_PASSCODE', next);
+        writeTokens_([{ h: tokenHash_(token), at: new Date().toISOString() }]);
+      });
+      return token;
+    },
     notify: gasNotify_,
     account: function () { return Session.getEffectiveUser().getEmail(); },
     log: function (m) { console.error(m && m.stack ? m.stack : m); }
@@ -809,7 +904,9 @@ function syncCalendar_(evt) {
     if (existing) existing.deleteEvent();
     return l.eventId ? '' : undefined;
   }
-  if (!cfg.addToCalendar) return undefined;
+  // With calendar sync off, no new events are made, but one that already exists
+  // still follows its booking so the calendar never shows a stale day.
+  if (!cfg.addToCalendar && !existing) return undefined;
 
   var day = Utilities.parseDate(l.date + ' 12:00', TIME_ZONE, 'yyyy-MM-dd HH:mm');
   var title = (cfg.businessName.split(' ')[0] || 'Job') + ': ' + l.name + (l.service ? ' — ' + l.service : '');
@@ -829,3 +926,5 @@ function syncCalendar_(evt) {
   }
   return cal.createAllDayEvent(title, day, { description: desc, location: l.address || '' }).getId();
 }
+
+// ---- END OF FILE (Splash Booking backend) ----
