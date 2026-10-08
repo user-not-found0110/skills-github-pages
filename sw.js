@@ -1,34 +1,16 @@
-const CACHE_NAME = 'splash-pw-v4';
-const ASSETS = [
-  './',
-  './index.html',
-  './style.css',
-  './app.js',
-  './manifest.json',
-  './icons/icon.svg'
-];
-
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
-  );
-});
+// This tool has been retired. When a phone that still has it installed checks
+// for updates, this worker deletes the tool's offline copy and removes itself,
+// then reloads any open window so nothing of the old tool keeps running.
+self.addEventListener('install', () => self.skipWaiting());
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys.filter(key => key !== CACHE_NAME && key.startsWith('splash-pw-'))
-          .map(key => caches.delete(key))
-      )
-    ).then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
-  );
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names
+      .filter(n => /^splash-(pw|content|followup|leads|agent|pace|weather)-v\d+$/.test(n))
+      .map(n => caches.delete(n)));
+    await self.registration.unregister();
+    const windows = await self.clients.matchAll({ type: 'window' });
+    windows.forEach(w => w.navigate(w.url));
+  })());
 });
