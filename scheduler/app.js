@@ -11,27 +11,13 @@
     get: function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
     set: function (k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
-  var KEY_AUTH = 'scheduler.auth';
+  var KEY_PASS = 'scheduler.key';
   var KEY_SEEN = 'scheduler.seenAt';
   var KEY_TAB = 'scheduler.tab';
-  store.set('scheduler.key', ''); // older builds kept the passcode itself on the device
-
-  // The sign-in token only counts for the server it was issued by.
-  function readAuth() {
-    try {
-      var a = JSON.parse(store.get(KEY_AUTH) || '{}');
-      return a.url === Api.apiUrl && /^[0-9a-f]{64}$/.test(a.token || '') ? a.token : '';
-    } catch (e) { return ''; }
-  }
-  function saveAuth(token) {
-    store.set(KEY_AUTH, token ? JSON.stringify({ url: Api.apiUrl, token: token }) : '');
-  }
 
   var S = {
-    token: Api.mode === 'live' ? readAuth() : 'demo',
+    key: Api.mode === 'live' ? store.get(KEY_PASS) : '',
     cfg: null,
-    base: null,       // config as last received from the server; saves send only what changed since
-    mutSeq: 0,        // bumps after every successful change, so loads that started earlier are thrown away
     links: [],
     activity: [],
     today: localToday(),
@@ -81,11 +67,9 @@
     var s = (Date.now() - t) / 1000;
     if (s < 60) return 'Just now';
     if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    if (s < 172800) return 'Yesterday';
     var d = new Date(t);
-    if (d.toDateString() === new Date().toDateString()) return Math.floor(s / 3600) + 'h ago';
-    var y = new Date();
-    y.setDate(y.getDate() - 1);
-    if (d.toDateString() === y.toDateString()) return 'Yesterday';
     return D.MONTHS[d.getMonth()].slice(0, 3) + ' ' + d.getDate();
   }
   function agoInline(iso) {
@@ -208,44 +192,31 @@
   });
 
   // ---------- Loading data ----------
-  function clone(x) { return JSON.parse(JSON.stringify(x)); }
-
-  function applyLoad(data) {
-    S.today = D.isDate(data.today) ? data.today : localToday();
-    S.links = data.links || [];
-    S.activity = data.activity || [];
-    S.account = data.account || '';
-    if (!S.cfg || !S.cfgDirty) {
-      S.cfg = data.config;
-      S.base = clone(data.config);
-    }
-    if (!S.aMonth) S.aMonth = S.today.slice(0, 7);
-    if (!S.seenAt) {
-      S.seenAt = latestActivity() || new Date().toISOString();
-      store.set(KEY_SEEN, S.seenAt);
-    }
-    S.loaded = true;
-    renderAll();
-    if ($('tab-bookings').classList.contains('active')) markSeenSoon();
-  }
-
   function refresh(opts) {
     opts = opts || {};
     if (S.refreshing) return S.refreshing;
     $('refreshBtn').classList.add('spin');
-    var seq = S.mutSeq;
-    S.refreshing = Api.call('admin.load', { token: S.token, site: siteUrl() }).then(function (data) {
+    S.refreshing = Api.call('admin.load', { key: S.key, site: siteUrl() }).then(function (data) {
       S.refreshing = null;
-      // Something was saved while this was loading: its data may predate that, so load again.
-      if (seq !== S.mutSeq) return refresh(opts);
       $('refreshBtn').classList.remove('spin');
-      applyLoad(data);
+      S.today = data.today;
+      S.links = data.links || [];
+      S.activity = data.activity || [];
+      S.account = data.account || '';
+      if (!S.cfg || !S.cfgDirty) S.cfg = data.config;
+      if (!S.aMonth) S.aMonth = S.today.slice(0, 7);
+      if (!S.seenAt) {
+        S.seenAt = latestActivity() || new Date().toISOString();
+        store.set(KEY_SEEN, S.seenAt);
+      }
+      S.loaded = true;
+      renderAll();
+      if ($('tab-bookings').classList.contains('active')) markSeenSoon();
       if (opts.toast) toast('Up to date');
     }).catch(function (err) {
       S.refreshing = null;
       $('refreshBtn').classList.remove('spin');
-      if (err.code === 'signed_out' || err.code === 'not_setup') {
-        if (err.code === 'signed_out') { S.token = ''; saveAuth(''); }
+      if (err.code === 'bad_key' || err.code === 'not_setup' || err.code === 'locked') {
         showLock(err.message);
         return;
       }
@@ -304,8 +275,7 @@
     var rel = muted ? '' : relDay(l.date);
     var tags = '';
     var hist = l.history || [];
-    var lastSet = hist.filter(function (h) { return h.type === 'booked' || h.type === 'changed'; }).pop();
-    var lastMove = lastSet && lastSet.type === 'changed' ? lastSet : null;
+    var lastMove = hist.filter(function (h) { return h.type === 'changed'; }).pop();
     if (l.status === 'cancelled') {
       var last = hist[hist.length - 1] || {};
       tags += '<span class="tag tag-red">' + (last.by === 'owner' ? 'You cancelled' : 'Customer cancelled') + '</span>';
@@ -373,8 +343,7 @@
         (S.cfg.addToCalendar ? ' The calendar event is removed.' : ''),
       ok: 'Cancel booking', cancel: 'Keep it', danger: true,
       onOk: function () {
-        return Api.call('admin.cancelBooking', { token: S.token, id: l.id }).then(function () {
-          S.mutSeq++;
+        return Api.call('admin.cancelBooking', { key: S.key, id: l.id }).then(function () {
           var name = firstName(l.name);
           var day = D.pretty(l.date, 'day');
           return refresh({ quiet: true }).then(function () {
@@ -527,15 +496,13 @@
     S.saving = true;
     setSaveState('saving');
     var sent = JSON.stringify(S.cfg);
-    S.savingPromise = Api.call('admin.saveConfig', { token: S.token, config: S.cfg, base: S.base }).then(function (res) {
+    S.savingPromise = Api.call('admin.saveConfig', { key: S.key, config: S.cfg }).then(function (res) {
       S.saving = false;
-      S.mutSeq++;
       if (S.savePending || JSON.stringify(S.cfg) !== sent) {
         S.savePending = false;
-        return saveConfig(); // same base: the server merges only this device's edits
+        return saveConfig();
       }
       S.cfg = res.config;
-      S.base = clone(res.config);
       S.cfgDirty = false;
       setSaveState('ok');
       $('topSub').textContent = S.cfg.businessName;
@@ -587,11 +554,6 @@
     S.cfg.opened = without(S.cfg.opened, d);
     if (S.cfg.workDays.indexOf(D.weekday(d)) >= 0 && S.cfg.blocked.indexOf(d) < 0) S.cfg.blocked = S.cfg.blocked.concat([d]).sort();
   }
-  // Range blocks cover days off too, so turning a weekday on later can't open a vacation day.
-  function blockDay(d) {
-    S.cfg.opened = without(S.cfg.opened, d);
-    if (S.cfg.blocked.indexOf(d) < 0) S.cfg.blocked = S.cfg.blocked.concat([d]).sort();
-  }
   function openDay(d, extra) {
     S.cfg.blocked = without(S.cfg.blocked, d);
     if (extra && S.cfg.workDays.indexOf(D.weekday(d)) < 0 && S.cfg.opened.indexOf(d) < 0) S.cfg.opened = S.cfg.opened.concat([d]).sort();
@@ -616,8 +578,8 @@
     var from = S.today > S.aMonth + '-01' ? S.today : S.aMonth + '-01';
     openSheet(
       '<h3>Block a date range</h3><p>Vacation, equipment down, a rainy week — customers won’t see these days. Existing bookings stay put.</p>' +
-      '<div class="custom-range"><label>From<input class="inp" type="date" id="brFrom" min="' + esc(S.today) + '" value="' + esc(from) + '"></label>' +
-      '<label>To<input class="inp" type="date" id="brTo" min="' + esc(S.today) + '" value="' + esc(D.addDays(from, 6)) + '"></label></div>' +
+      '<div class="custom-range"><label>From<input class="inp" type="date" id="brFrom" min="' + S.today + '" value="' + from + '"></label>' +
+      '<label>To<input class="inp" type="date" id="brTo" min="' + S.today + '" value="' + D.addDays(from, 6) + '"></label></div>' +
       '<div class="sheet-actions two"><button class="btn btn-soft" id="brOpen">Unblock range</button>' +
       '<button class="btn btn-primary" id="brBlock">Block range</button></div>',
       function () {
@@ -628,7 +590,7 @@
           if (a < S.today) a = S.today;
           if (D.diffDays(a, b) > 366) { toast('Keep it under a year.'); return; }
           var before = snapshot();
-          for (var d = a; d <= b; d = D.addDays(d, 1)) { if (block) blockDay(d); else openDay(d, false); }
+          for (var d = a; d <= b; d = D.addDays(d, 1)) { if (block) closeDay(d); else openDay(d, false); }
           S.aMonth = a.slice(0, 7);
           renderMonth();
           cfgChanged();
@@ -741,10 +703,9 @@
     var btn = $('createLinkBtn');
     busy(btn, true);
     Api.call('admin.createLink', {
-      token: S.token, customer: $('lnCustomer').value.trim(), service: $('lnService').value.trim(), start: r.start, end: r.end
+      key: S.key, customer: $('lnCustomer').value.trim(), service: $('lnService').value.trim(), start: r.start, end: r.end
     }).then(function (res) {
       busy(btn, false);
-      S.mutSeq++;
       S.links.unshift(res.link);
       $('lnCustomer').value = '';
       $('lnService').value = '';
@@ -857,8 +818,7 @@
         (booked ? ' This also cancels their ' + D.pretty(l.date, 'day') + ' booking.' : ''),
       ok: 'Delete link', cancel: 'Keep', danger: true,
       onOk: function () {
-        return Api.call('admin.archiveLink', { token: S.token, id: l.id }).then(function () {
-          S.mutSeq++;
+        return Api.call('admin.archiveLink', { key: S.key, id: l.id }).then(function () {
           S.links = S.links.filter(function (x) { return x.id !== l.id; });
           closeSheet();
           renderLinks();
@@ -940,7 +900,7 @@
     busy(btn, true);
     var first = S.settingsDirty ? saveSettings() : Promise.resolve();
     first.then(function () {
-      return Api.call('admin.testNotify', { token: S.token });
+      return Api.call('admin.testNotify', { key: S.key });
     }).then(function (res) {
       busy(btn, false);
       var r = res.results || {};
@@ -982,20 +942,18 @@
       toast('Paste the Web app URL. It starts with https://script.google.com/ and ends with /exec');
       return;
     }
-    saveAuth('');
     Api.setLocalUrl(u);
+    store.set(KEY_PASS, '');
     location.reload();
   });
   $('disconnectBtn').addEventListener('click', function () {
-    saveAuth('');
     Api.setLocalUrl('');
+    store.set(KEY_PASS, '');
     location.reload();
   });
   $('signOutBtn').addEventListener('click', function () {
-    var token = S.token;
-    S.token = '';
-    saveAuth('');
-    Api.call('admin.logout', { token: token }).catch(function () { /* already signed out */ });
+    store.set(KEY_PASS, '');
+    S.key = '';
     showLock();
   });
   $('passBtn').addEventListener('click', function () {
@@ -1011,11 +969,11 @@
           if (a.length < 6) { toast('Use at least 6 characters.'); return; }
           if (a !== b) { toast('Those don’t match.'); return; }
           busy($('pwSave'), true);
-          Api.call('admin.setPasscode', { token: S.token, newKey: a }).then(function (res) {
-            S.token = res.token;
-            saveAuth(res.token);
+          Api.call('admin.setPasscode', { key: S.key, newKey: a }).then(function () {
+            S.key = a;
+            store.set(KEY_PASS, a);
             closeSheet();
-            toast('Passcode changed. Other devices will need it to sign in again.');
+            toast('Passcode changed');
           }, function (err) {
             busy($('pwSave'), false);
             toast(err.message);
@@ -1058,13 +1016,13 @@
     var btn = $('lockBtn');
     busy(btn, true);
     $('lockErr').textContent = '';
-    Api.call('admin.login', { key: key, site: siteUrl() }).then(function (data) {
+    Api.call('admin.load', { key: key, site: siteUrl() }).then(function () {
       busy(btn, false);
-      S.token = data.token;
-      saveAuth(data.token);
+      S.key = key;
+      store.set(KEY_PASS, key);
       $('lock').hidden = true;
       $('lockInput').value = '';
-      applyLoad(data);
+      refresh();
     }, function (err) {
       busy(btn, false);
       $('lockErr').textContent = err.message;
@@ -1112,6 +1070,6 @@
   if (Api.mode === 'live' && !Api.configured) $('sUrl').value = Api.apiUrl;
   var lastTab = store.get(KEY_TAB);
   if (lastTab && $('tab-' + lastTab)) goTab(lastTab);
-  if (Api.mode === 'live' && !S.token) showLock();
+  if (Api.mode === 'live' && !S.key) showLock();
   else refresh();
 })();

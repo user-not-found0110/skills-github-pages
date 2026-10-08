@@ -90,7 +90,6 @@ button { font: inherit; color: inherit; }
   background: var(--surface);
   border-radius: 26px;
   overflow: hidden;
-  overflow: clip; /* clips the corners without trapping the sticky pick bar */
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, .08),
     0 50px 100px -40px rgba(0, 0, 0, .8),
@@ -286,7 +285,7 @@ button { font: inherit; color: inherit; }
   transition: transform .18s var(--ease), box-shadow .25s, background .2s, opacity .2s, filter .2s;
 }
 .btn:active:not(:disabled) { transform: scale(.97); }
-.btn svg { flex: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .btn-primary {
   color: #fff;
   background: linear-gradient(135deg, #0a58c2 0%, #1a7fd4 55%, #22c3ee 110%);
@@ -496,11 +495,6 @@ button { font: inherit; color: inherit; }
 @media (max-width: 879px) {
   .side-pick { display: none !important; }
   .card.focus .side { display: none; }
-}
-
-/* ---------- Small phones ---------- */
-@media (max-width: 379px) {
-  .cal-actions, .manage { grid-template-columns: 1fr; }
 }
 
 /* ---------- Larger screens ---------- */

@@ -13,11 +13,7 @@
     try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
   }
 
-  // Customer links may carry the server id (?s=) until it's in config.js. The
-  // owner app never takes it from the URL: a crafted link must not be able to
-  // point the Scheduler (and its sign-in) at someone else's script.
   function fromParam() {
-    if (/\/scheduler\//.test(location.pathname)) return '';
     var s = new URLSearchParams(location.search).get('s');
     return s && /^[A-Za-z0-9_-]{20,150}$/.test(s) ? 'https://script.google.com/macros/s/' + s + '/exec' : '';
   }
@@ -120,7 +116,7 @@
     var a = core.blankLink();
     Object.assign(a, {
       id: randomId(core), customer: 'Sarah Johnson (sample)', service: 'House wash + driveway',
-      start: t.slice(0, 8) + '01', end: day > monthEnd ? nextEnd : monthEnd, created: now, views: 2, lastViewed: now,
+      start: t.slice(0, 8) + '01', end: monthEnd, created: now, views: 2, lastViewed: now,
       status: 'booked', date: day, name: 'Sarah Johnson', phone: '(757) 555-0142',
       address: '418 Cedar Lakes Dr, Chesapeake, VA', bookedAt: now, updatedAt: now,
       history: [{ at: now, type: 'booked', date: day, from: '', by: 'customer' }]
@@ -169,10 +165,7 @@
       newId: function () { return randomId(core); },
       lock: function (fn) { return fn(); },
       checkAdmin: function () {},
-      checkToken: function () { return true; },
-      issueToken: function () { return 'demo'; },
-      revokeToken: function () {},
-      setPasscode: function () { return 'demo'; },
+      setPasscode: function () {},
       notify: function () { return {}; },
       account: function () { return ''; },
       log: function (e) { console.error(e); }
