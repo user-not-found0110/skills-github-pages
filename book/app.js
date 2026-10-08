@@ -102,15 +102,39 @@
   })();
   if (window.SplashApi && SplashApi.mode === 'demo') $('demoPill').hidden = false;
 
+  function currentView() {
+    var v = ['loading', 'calendar', 'details', 'done', 'message'].filter(function (x) { return !$('view-' + x).hidden; });
+    return v[0] || '';
+  }
+
+  // Only well-formed dates ever reach the page (they end up in markup).
+  function isDay(s) { return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s); }
+  function sane(d) {
+    if (!d || !d.link || !d.business || !Array.isArray(d.open)) return false;
+    if (!isDay(d.today) || !isDay(d.firstBookable) || !isDay(d.link.start) || !isDay(d.link.end)) return false;
+    if (d.link.date && !isDay(d.link.date)) return false;
+    d.open = d.open.filter(isDay);
+    return true;
+  }
+
+  var loadSeq = 0;
   function load(opts) {
+    opts = opts || {};
     if (!S.id) {
       showMessage({ icon: 'link', title: 'This link is incomplete', text: 'It looks like part of the link got cut off. Please open the full link you were sent.' });
       return Promise.resolve();
     }
-    if (!opts || !opts.silent) show('loading', { scroll: false });
+    if (!opts.silent) show('loading', { scroll: false });
+    var seq = ++loadSeq;
+    var startView = currentView();
     return SplashApi.call('link.get', { id: S.id, preview: S.preview }).then(function (data) {
+      if (seq !== loadSeq) return; // a newer load already took over
+      // A quiet refresh never pulls the customer out of something they're doing.
+      if (opts.background && (S.busy || S.mode === 'change' || S.selected || currentView() !== startView ||
+          !$('view-details').hidden || !$('cancelModal').hidden)) return;
       apply(data, opts);
     }).catch(function (err) {
+      if (seq !== loadSeq || opts.background) return;
       if (err.code === 'not_found') {
         showMessage({ icon: 'link', title: 'Link not active', text: err.message });
       } else {
@@ -161,6 +185,13 @@
   }
 
   function apply(data, opts) {
+    if (!sane(data)) {
+      showMessage({
+        icon: 'wifi', title: "Couldn't load the calendar", text: 'The booking server sent something unexpected. Please try again.',
+        actions: [{ label: 'Try again', primary: true, onClick: function () { load(); } }]
+      });
+      return;
+    }
     S.data = data;
     brand(data);
     var l = data.link;
@@ -173,14 +204,20 @@
       renderDone(opts && opts.fresh);
       return;
     }
+    var gone = '';
+    if (l.status === 'cancelled' && l.date) {
+      gone = l.cancelledBy === 'owner'
+        ? data.business.name + ' cancelled your ' + fmt(l.date, 'short') + ' booking. '
+        : 'Your ' + fmt(l.date, 'short') + ' booking is cancelled. ';
+    }
     if (data.closed) {
-      showMessage({ icon: 'clock', title: 'This scheduling window has closed',
-        text: 'The days on this link have passed. Reach out and we’ll send you a fresh one.', call: true });
+      showMessage({ icon: 'clock', title: gone ? 'Booking cancelled' : 'This scheduling window has closed',
+        text: gone + 'The days on this link have passed. Reach out and we\u2019ll send you a fresh one.', call: true });
       return;
     }
     if (!data.open.length) {
-      showMessage({ icon: 'calendar', title: 'All booked up',
-        text: 'Every day in this window has been taken. Reach out and we’ll find you a day.', call: true });
+      showMessage({ icon: 'calendar', title: gone ? 'Booking cancelled' : 'All booked up',
+        text: gone + 'Every day in this window has been taken. Reach out and we\u2019ll find you a day.', call: true });
       return;
     }
     S.mode = 'new';
@@ -434,10 +471,17 @@
         S.selected = '';
         toast(err.message);
         SplashApi.call('link.get', { id: S.id, preview: true }).then(function (data) {
+          if (!sane(data)) return;
           S.data = data;
           S.mode = 'change';
           openCalendar('');
         }).catch(function () {});
+      } else if (err.code === 'name_required' || err.code === 'past' || err.code === 'not_found') {
+        // The booking changed elsewhere (cancelled, passed, or link removed): show where it stands now.
+        toast(err.code === 'name_required' ? 'Your booking changed since this page was opened.' : err.message);
+        S.mode = 'new';
+        S.selected = '';
+        load({ silent: true });
       } else {
         toast(err.message);
       }
@@ -476,6 +520,8 @@
 
   // ---------- Done ----------
   function renderDone(fresh) {
+    S.mode = 'new';
+    S.selected = '';
     var d = S.data, l = d.link, p = parts(l.date);
     var first = firstName(l.name);
     $('doneTitle').textContent = fresh ? (first ? "You're all set, " + first + '!' : "You're all set!") : "You're booked" + (first ? ', ' + first : '') + '.';
@@ -574,8 +620,9 @@
   var hiddenAt = 0;
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) { hiddenAt = Date.now(); return; }
-    if (S.data && !S.busy && Date.now() - hiddenAt > 5 * 60 * 1000 && $('view-details').hidden && $('cancelModal').hidden) {
-      load({ silent: true });
+    if (S.data && !S.busy && S.mode !== 'change' && Date.now() - hiddenAt > 5 * 60 * 1000 &&
+        $('view-details').hidden && $('cancelModal').hidden) {
+      load({ silent: true, background: true });
     }
   });
 

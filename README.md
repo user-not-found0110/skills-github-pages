@@ -41,9 +41,9 @@ Out of the box (with `book/config.js` empty) both pages run in **demo mode**. Ev
 
 To go live, the booking data needs somewhere shared to live. GitHub Pages only serves static files, so the server is a free **Google Apps Script** that runs in your own Google account and stores bookings in a Google Sheet you own. One-time setup is about 10 minutes on a computer, and the steps are also in **Scheduler → Settings**:
 
-1. Open [sheets.new](https://sheets.new) and name the sheet **Splash Bookings**. Then **Extensions → Apps Script** and delete the sample code.
-2. Paste in all of [`scheduler/backend/Code.js`](scheduler/backend/Code.js). Change `ADMIN_PASSCODE` from `'CHANGE-ME'` to your own passcode (6+ characters). Save.
-3. Select **setup** in the function menu → **Run** → approve the permissions. Google shows an "unverified app" warning because it's your own private script. Choose **Advanced → Go to … (unsafe) → Allow**.
+1. Open [sheets.new](https://sheets.new) and name the sheet **Splash Bookings**. Then **Extensions → Apps Script**. Click in the code, press **Ctrl+A** (Cmd+A on a Mac) and **Delete**, so the editor is completely empty. Leftover sample code causes a "Syntax error" on the last line.
+2. Paste in all of [`scheduler/backend/Code.js`](scheduler/backend/Code.js). The last line must be `// ---- END OF FILE (Splash Booking backend) ----`; delete anything below it. Change `ADMIN_PASSCODE` from `'CHANGE-ME'` to your own passcode (6+ characters). Save.
+3. Select **setup** in the function menu → **Run** → approve the permissions. Google shows an "unverified app" warning because it's your own private script. Choose **Advanced → Go to … (unsafe)**. If Google lists checkboxes, tick **Select all**, then **Continue** or **Allow**.
 4. **Deploy → New deployment →** gear → **Web app**. Set **Execute as: Me** and **Who has access: Anyone**. Deploy, then copy the Web app URL (ends in `/exec`).
 5. In **Scheduler → Settings → Connection**, paste the URL, press **Connect**, and enter your passcode.
 6. For short customer links, put the same URL in [`book/config.js`](book/config.js). Until then, links still work but carry the server ID, which makes them noticeably longer.
@@ -61,7 +61,8 @@ If you edit the script later, use **Deploy → Manage deployments → Edit → V
 - **The default link address looks like `…github.io/skills-github-pages/book/?l=…`.** For a more professional link, point a subdomain such as `book.splashwashing.com` at GitHub Pages using a custom domain. It's a DNS change and nothing in the apps needs to change.
 - **Google's script server isn't instant.** Expect a brief loading shimmer when the page opens and a second or two after **Confirm**.
 - **Quotas:** a free Google account can send email to 100 recipients a day through Apps Script. That's far above what booking alerts need.
-- **Spam guard:** a single link allows 8 changes per hour. The owner passcode locks for 15 minutes after 10 wrong tries.
+- **Spam guard:** a single link allows 8 changes per hour. You type the passcode once per device; after that the device stays signed in with its own key. Ten wrong passcode tries pause *new* sign-ins for 15 minutes, but devices already signed in keep working. **Lock this device** in Settings signs one device out. Changing the passcode signs out every other device.
+- **Private notes:** anything you put in (parentheses) in a link's customer name, e.g. `Sarah Johnson (gate code 4411)`, stays in the Scheduler. The customer only sees `Sarah Johnson`.
 - Your bookings live in the Google Sheet (**Links** and **Activity** tabs), so you can view, sort, or export them there anytime.
 
 ### Files
