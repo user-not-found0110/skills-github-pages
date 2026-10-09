@@ -1052,31 +1052,43 @@
     var token = S.token;
     S.token = '';
     saveAuth('');
-    Api.call('admin.logout', { token: token }).catch(function () { /* already signed out */ });
     showLock();
+    // Reload once the server has dropped this sign-in, so nothing from the
+    // session is left anywhere in the page.
+    var reload = function () { location.reload(); };
+    Api.call('admin.logout', { token: token }).then(reload, reload);
+    setTimeout(reload, 4000);
   });
   $('passBtn').addEventListener('click', function () { openPassSheet(); });
   function openPassSheet() {
     openSheet(
       '<h3>Change passcode</h3><p>Used to unlock the Scheduler on your devices. Use ' + Core.minPasscode +
       ' or more characters that aren\u2019t a word, name, date, or phone number.</p>' +
+      '<label class="lbl" for="pw0">Current passcode</label><input class="inp" id="pw0" type="password" autocomplete="current-password">' +
+      (S.twoStep ? '<label class="lbl" for="pwCode">6-digit code from your authenticator app</label>' + codeField('pwCode') : '') +
       '<label class="lbl" for="pw1">New passcode</label><input class="inp" id="pw1" type="password" autocomplete="new-password">' +
       '<label class="lbl" for="pw2">Type it again</label><input class="inp" id="pw2" type="password" autocomplete="new-password">' +
       '<div class="sheet-actions two"><button class="btn btn-soft" data-close>Cancel</button>' +
       '<button class="btn btn-primary" id="pwSave"><span class="btn-text">Save</span><span class="spinner"></span></button></div>',
       function () {
-        $('pwSave').onclick = function () {
+        // Kept from now on: the sheet may be closed and emptied while a request runs.
+        var save = $('pwSave'), cur = $('pw0'), codeBox = $('pwCode');
+        save.onclick = function () {
           var a = $('pw1').value, b = $('pw2').value;
+          var code = codeBox ? codeBox.value.replace(/\s+/g, '') : '';
+          if (!cur.value) { toast('Type your current passcode.'); return; }
+          if (codeBox && !/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
           if (a.length < Core.minPasscode) { toast('Use at least ' + Core.minPasscode + ' characters.'); return; }
           if (a !== b) { toast('Those don’t match.'); return; }
-          busy($('pwSave'), true);
-          Api.call('admin.setPasscode', { token: S.token, newKey: a }).then(function (res) {
+          busy(save, true);
+          Api.call('admin.setPasscode', { token: S.token, key: cur.value, code: code, newKey: a }).then(function (res) {
             S.token = res.token;
             saveAuth(res.token);
             closeSheet();
             toast('Passcode changed. Other devices will need it to sign in again.');
           }, function (err) {
-            busy($('pwSave'), false);
+            busy(save, false);
+            if (codeBox) codeBox.value = '';
             toast(errText(err));
           });
         };
@@ -1129,10 +1141,9 @@
     return qrLoad;
   }
   function codeField(id) {
-    return '<input class="inp code-entry" id="' + id + '" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" ' +
+    return '<input class="inp code-entry" id="' + id + '" type="text" inputmode="numeric" maxlength="7" ' +
       'autocomplete="one-time-code" placeholder="000000" aria-label="6-digit code">';
   }
-  function readCode(id) { return $(id).value.replace(/\s+/g, ''); }
 
   $('twoStepBtn').addEventListener('click', function () {
     if (S.twoStep) openTwoStepOff(); else startTwoStep();
@@ -1155,30 +1166,34 @@
         '<div class="link-box setup-key" id="tsKey">' + esc(res.secret.replace(/(.{4})/g, '$1 ').trim()) + '</div>' +
         '<div class="sheet-actions two"><a class="btn btn-soft" id="tsOpen" href="' + esc(res.uri) + '">Open in app</a>' +
         '<button class="btn btn-soft" id="tsCopy">' + icon('copy') + 'Copy key</button></div>' +
+        '<label class="lbl" for="tsPass">Your passcode</label><input class="inp" id="tsPass" type="password" autocomplete="current-password">' +
         '<label class="lbl" for="tsCode">6-digit code from the app</label>' + codeField('tsCode') +
         '<div class="sheet-actions two"><button class="btn btn-soft" data-close>Cancel</button>' +
         '<button class="btn btn-primary" id="tsConfirm"><span class="btn-text">Turn on</span><span class="spinner"></span></button></div>' +
         '<p class="hint">Keep that phone safe. If you lose it, open Apps Script on a computer, pick <strong>turnOffTwoStepSignIn</strong> next to Run, and press Run.</p>',
         function () {
+          // Kept from now on: the sheet may be closed and emptied while these run.
+          var qrBox = $('tsQr'), confirm = $('tsConfirm'), codeBox = $('tsCode'), pass = $('tsPass');
           loadQr().then(function (qrcode) {
             var qr = qrcode(0, 'M');
             qr.addData(res.uri);
             qr.make();
-            $('tsQr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
-          }).catch(function () { $('tsQr').hidden = true; });
+            qrBox.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+          }).catch(function () { qrBox.hidden = true; });
           $('tsCopy').onclick = function () { copyText(res.secret).then(function () { toast('Setup key copied'); }); };
-          $('tsConfirm').onclick = function () {
-            var code = readCode('tsCode');
+          confirm.onclick = function () {
+            var code = codeBox.value.replace(/\s+/g, '');
+            if (!pass.value) { toast('Type your passcode.'); return; }
             if (!/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
-            busy($('tsConfirm'), true);
-            Api.call('admin.twoStepConfirm', { token: S.token, code: code }).then(function () {
+            busy(confirm, true);
+            Api.call('admin.twoStepConfirm', { token: S.token, key: pass.value, code: code }).then(function () {
               S.twoStep = true;
               renderTwoStep();
               closeSheet();
               toast('Two-step sign-in is on. Other devices will need a code to sign in again.');
             }, function (err) {
-              busy($('tsConfirm'), false);
-              $('tsCode').value = '';
+              busy(confirm, false);
+              codeBox.value = '';
               toast(errText(err));
             });
           };
@@ -1198,18 +1213,19 @@
       '<div class="sheet-actions two"><button class="btn btn-soft" data-close>Keep it on</button>' +
       '<button class="btn btn-danger" id="tsOff"><span class="btn-text">Turn off</span><span class="spinner"></span></button></div>',
       function () {
-        $('tsOff').onclick = function () {
-          var code = readCode('tsOffCode');
+        var off = $('tsOff'), codeBox = $('tsOffCode');
+        off.onclick = function () {
+          var code = codeBox.value.replace(/\s+/g, '');
           if (!/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
-          busy($('tsOff'), true);
+          busy(off, true);
           Api.call('admin.twoStepOff', { token: S.token, code: code }).then(function () {
             S.twoStep = false;
             renderTwoStep();
             closeSheet();
             toast('Two-step sign-in is off.');
           }, function (err) {
-            busy($('tsOff'), false);
-            $('tsOffCode').value = '';
+            busy(off, false);
+            codeBox.value = '';
             toast(errText(err));
           });
         };
@@ -1219,37 +1235,72 @@
 
   // ---------- Lock ----------
   var LOCK_TEXT = $('lockText').textContent;
+  // Locking removes every customer detail from the page rather than covering it,
+  // and keeps keyboard focus out of the app behind the lock screen.
+  function wipeData() {
+    S.links = [];
+    S.activity = [];
+    S.loaded = false;
+    S.settingsDirty = false;
+    ['upcoming', 'past', 'activity', 'linkList'].forEach(function (id) { $(id).innerHTML = ''; });
+    ['sEmail', 'sNtfy', 'sOwner', 'sPhone'].forEach(function (id) { $(id).value = ''; });
+    closeSheet();
+  }
+  function shellInert(on) {
+    document.querySelectorAll('header.top, main.content, nav.tabbar').forEach(function (el) {
+      if (on) el.setAttribute('inert', ''); else el.removeAttribute('inert');
+    });
+  }
   function showLock(message) {
+    wipeData();
+    shellInert(true);
     $('lock').hidden = false;
     $('lockErr').textContent = message || '';
     $('lockDemo').hidden = Api.configured;
     $('lockCode').hidden = true;
     $('lockCode').value = '';
+    $('lockRescue').hidden = true;
+    $('lockRescue').value = '';
+    $('lockRescueBtn').hidden = true;
+    $('lockRescueHelp').hidden = true;
     $('lockText').textContent = LOCK_TEXT;
     setTimeout(function () { $('lockInput').focus(); }, 200);
   }
+  $('lockRescueBtn').addEventListener('click', function () {
+    $('lockRescueBtn').hidden = true;
+    $('lockRescueHelp').hidden = false;
+    $('lockRescue').hidden = false;
+    $('lockRescue').focus();
+  });
   $('lockForm').addEventListener('submit', function (e) {
     e.preventDefault();
     var key = $('lockInput').value;
     if (!key) return;
-    var codeBox = $('lockCode');
+    var codeBox = $('lockCode'), rescueBox = $('lockRescue');
     var code = codeBox.hidden ? '' : codeBox.value.replace(/\s+/g, '');
-    if (!codeBox.hidden && !/^\d{6}$/.test(code)) {
+    // An empty code is sent as is: the server asks for one only while two-step is on.
+    if (code && !/^\d{6}$/.test(code)) {
       $('lockErr').textContent = 'Type the 6-digit code from your authenticator app.';
       codeBox.focus();
       return;
     }
+    var rescue = rescueBox.hidden ? '' : rescueBox.value.replace(/\s+/g, '');
     var btn = $('lockBtn');
     busy(btn, true);
     $('lockErr').textContent = '';
-    Api.call('admin.login', { key: key, code: code, site: siteUrl() }).then(function (data) {
+    Api.call('admin.login', { key: key, code: code, rescue: rescue, site: siteUrl() }).then(function (data) {
       busy(btn, false);
       S.token = data.token;
       saveAuth(data.token);
+      shellInert(false);
       $('lock').hidden = true;
       $('lockInput').value = '';
       codeBox.hidden = true;
       codeBox.value = '';
+      rescueBox.hidden = true;
+      rescueBox.value = '';
+      $('lockRescueBtn').hidden = true;
+      $('lockRescueHelp').hidden = true;
       applyLoad(data);
       if (key.length < Core.minPasscode) {
         toast('Your passcode is short and easier to guess. Use ' + Core.minPasscode + '+ characters.', 'Change', openPassSheet);
@@ -1265,6 +1316,7 @@
         return;
       }
       codeBox.value = '';
+      if (err.code === 'locked' && rescueBox.hidden) $('lockRescueBtn').hidden = false;
       $('lockErr').textContent = errText(err);
       var card = document.querySelector('.lock-card');
       card.classList.remove('shake');

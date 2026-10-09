@@ -402,6 +402,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .lock-err { min-height: 22px; margin: 8px 0; color: var(--red); font-size: 13.5px; }
 .lock .lock-code { margin-top: 10px; letter-spacing: .4em; font-variant-numeric: tabular-nums; }
 .lock .lock-code::placeholder { letter-spacing: .04em; }
+.lock .lock-rescue { margin-top: 10px; font-size: 15px; letter-spacing: .12em; text-transform: uppercase; }
+.lock .lock-rescue::placeholder { text-transform: none; letter-spacing: .02em; }
+.lock .lock-help { margin: 8px 0 0; font-size: 13px; }
 .twostep { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding: 14px; border-radius: 14px; background: rgba(0, 0, 0, .2); border: 1px solid var(--line); }
 .twostep-text { display: grid; gap: 2px; font-size: 14px; min-width: 0; }
 .twostep-text span { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
