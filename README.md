@@ -68,7 +68,7 @@ When a change needs new server code, the pull request says so. On a computer:
 3. **Deploy → Manage deployments →** pencil (Edit) → **Version: New version** → **Deploy**. The URL stays the same. If Google asks for permission again, allow it.
 4. Open your Web app URL in a browser. It shows `"version"` with the number that's now live.
 
-Update the server code first and merge the pull request after. The new server code still works with the Scheduler that's live before the merge, so nothing breaks in between. If you merge first, the Scheduler's passcode screen tells you the server code is out of date until you update it.
+The pull request says whether to merge it first or update the server code first, and why. Do the second step right after the first. While the two don't match, anything that needs the newer server code tells you the server code is out of date.
 
 ## Alerts — read this
 - **Email** goes to the address in Settings, or to your Google account if that's blank. Gmail may not ring your phone for a message your own account sends to itself, so either use a different address (like a business email) or turn on push.
