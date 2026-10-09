@@ -11,13 +11,33 @@
     get: function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
     set: function (k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
-  var KEY_PASS = 'scheduler.key';
+  var KEY_AUTH = 'scheduler.auth';
   var KEY_SEEN = 'scheduler.seenAt';
   var KEY_TAB = 'scheduler.tab';
+  store.set('scheduler.key', ''); // older builds kept the passcode itself on the device
+
+  // The sign-in token only counts for the server it was issued by.
+  function readAuth() {
+    try {
+      var a = JSON.parse(store.get(KEY_AUTH) || '{}');
+      return a.url === Api.apiUrl && /^[0-9a-f]{64}$/.test(a.token || '') ? a.token : '';
+    } catch (e) { return ''; }
+  }
+  function saveAuth(token) {
+    store.set(KEY_AUTH, token ? JSON.stringify({ url: Api.apiUrl, token: token }) : '');
+  }
+
+  // The server answers 'bad_action' to requests it doesn't know: it's running older code.
+  var OUTDATED = 'Your Google Apps Script is running older code. On a computer, open it, select all the code and ' +
+    'paste in the new server code (scheduler/backend/Code.js), save, then Deploy \u2192 Manage deployments \u2192 ' +
+    'Edit \u2192 Version: New version \u2192 Deploy.';
+  function errText(err) { return err.code === 'bad_action' ? OUTDATED : err.message; }
 
   var S = {
-    key: Api.mode === 'live' ? store.get(KEY_PASS) : '',
+    token: Api.mode === 'live' ? readAuth() : 'demo',
     cfg: null,
+    base: null,       // config as last received from the server; saves send only what changed since
+    mutSeq: 0,        // bumps after every successful change, so loads that started earlier are thrown away
     links: [],
     activity: [],
     today: localToday(),
@@ -31,6 +51,8 @@
     seenAt: store.get(KEY_SEEN),
     cfgDirty: false,
     settingsDirty: false,
+    filled: null,     // Settings form values as last filled in from the config
+    twoStep: false,   // two-step sign-in is on for this server
     saving: false,
     savePending: false,
     saveTimer: null
@@ -67,9 +89,11 @@
     var s = (Date.now() - t) / 1000;
     if (s < 60) return 'Just now';
     if (s < 3600) return Math.floor(s / 60) + 'm ago';
-    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-    if (s < 172800) return 'Yesterday';
     var d = new Date(t);
+    if (d.toDateString() === new Date().toDateString()) return Math.floor(s / 3600) + 'h ago';
+    var y = new Date();
+    y.setDate(y.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'Yesterday';
     return D.MONTHS[d.getMonth()].slice(0, 3) + ' ' + d.getDate();
   }
   function agoInline(iso) {
@@ -151,7 +175,8 @@
     $('sheet').hidden = false;
     if (mount) mount($('sheetBody'));
   }
-  function closeSheet() { $('sheet').hidden = true; }
+  // Emptied on close so nothing shown in a sheet (like a two-step setup key) stays in the page.
+  function closeSheet() { $('sheet').hidden = true; $('sheetBody').innerHTML = ''; }
   $('sheet').addEventListener('click', function (e) {
     if (e.target.closest('[data-close]')) closeSheet();
   });
@@ -192,32 +217,58 @@
   });
 
   // ---------- Loading data ----------
+  function clone(x) { return JSON.parse(JSON.stringify(x)); }
+
+  function applyLoad(data) {
+    S.today = D.isDate(data.today) ? data.today : localToday();
+    S.links = data.links || [];
+    S.activity = data.activity || [];
+    S.account = data.account || '';
+    S.twoStep = !!data.twoStep;
+    if (!S.cfg || !S.cfgDirty) {
+      S.cfg = data.config;
+      S.base = clone(data.config);
+    }
+    if (!S.aMonth) S.aMonth = S.today.slice(0, 7);
+    if (!S.seenAt) {
+      S.seenAt = latestActivity() || new Date().toISOString();
+      store.set(KEY_SEEN, S.seenAt);
+    }
+    S.loaded = true;
+    renderAll();
+    if ($('tab-bookings').classList.contains('active')) markSeenSoon();
+  }
+
   function refresh(opts) {
     opts = opts || {};
     if (S.refreshing) return S.refreshing;
     $('refreshBtn').classList.add('spin');
-    S.refreshing = Api.call('admin.load', { key: S.key, site: siteUrl() }).then(function (data) {
+    var seq = S.mutSeq, token = S.token;
+    S.refreshing = Api.call('admin.load', { token: token, site: siteUrl() }).then(function (data) {
       S.refreshing = null;
+      // Something was saved while this was loading: its data may predate that, so load again.
+      if (seq !== S.mutSeq) return refresh(opts);
       $('refreshBtn').classList.remove('spin');
-      S.today = data.today;
-      S.links = data.links || [];
-      S.activity = data.activity || [];
-      S.account = data.account || '';
-      if (!S.cfg || !S.cfgDirty) S.cfg = data.config;
-      if (!S.aMonth) S.aMonth = S.today.slice(0, 7);
-      if (!S.seenAt) {
-        S.seenAt = latestActivity() || new Date().toISOString();
-        store.set(KEY_SEEN, S.seenAt);
-      }
-      S.loaded = true;
-      renderAll();
-      if ($('tab-bookings').classList.contains('active')) markSeenSoon();
+      applyLoad(data);
       if (opts.toast) toast('Up to date');
     }).catch(function (err) {
       S.refreshing = null;
       $('refreshBtn').classList.remove('spin');
-      if (err.code === 'bad_key' || err.code === 'not_setup' || err.code === 'locked') {
+      if (err.code === 'signed_out') {
+        // Only sign out if the token that failed is still the current one. A
+        // passcode change here, or a sign-in in another tab, replaces it mid-load.
+        var stored = readAuth();
+        if (S.token !== token || (stored && stored !== token)) {
+          if (S.token === token) S.token = stored;
+          return refresh(opts);
+        }
+        S.token = '';
+        saveAuth('');
         showLock(err.message);
+        return;
+      }
+      if (err.code === 'not_setup' || err.code === 'bad_action') {
+        showLock(errText(err));
         return;
       }
       if (!opts.quiet) toast(err.message, 'Retry', function () { refresh(); });
@@ -241,6 +292,7 @@
     renderLinks();
     if (!S.settingsDirty) fillSettings();
     renderConnection();
+    renderTwoStep();
   }
 
   // ---------- Bookings ----------
@@ -275,7 +327,8 @@
     var rel = muted ? '' : relDay(l.date);
     var tags = '';
     var hist = l.history || [];
-    var lastMove = hist.filter(function (h) { return h.type === 'changed'; }).pop();
+    var lastSet = hist.filter(function (h) { return h.type === 'booked' || h.type === 'changed'; }).pop();
+    var lastMove = lastSet && lastSet.type === 'changed' ? lastSet : null;
     if (l.status === 'cancelled') {
       var last = hist[hist.length - 1] || {};
       tags += '<span class="tag tag-red">' + (last.by === 'owner' ? 'You cancelled' : 'Customer cancelled') + '</span>';
@@ -343,7 +396,8 @@
         (S.cfg.addToCalendar ? ' The calendar event is removed.' : ''),
       ok: 'Cancel booking', cancel: 'Keep it', danger: true,
       onOk: function () {
-        return Api.call('admin.cancelBooking', { key: S.key, id: l.id }).then(function () {
+        return Api.call('admin.cancelBooking', { token: S.token, id: l.id }).then(function () {
+          S.mutSeq++;
           var name = firstName(l.name);
           var day = D.pretty(l.date, 'day');
           return refresh({ quiet: true }).then(function () {
@@ -496,16 +550,26 @@
     S.saving = true;
     setSaveState('saving');
     var sent = JSON.stringify(S.cfg);
-    S.savingPromise = Api.call('admin.saveConfig', { key: S.key, config: S.cfg }).then(function (res) {
+    S.savingPromise = Api.call('admin.saveConfig', { token: S.token, config: S.cfg, base: S.base }).then(function (res) {
       S.saving = false;
+      S.mutSeq++;
       if (S.savePending || JSON.stringify(S.cfg) !== sent) {
         S.savePending = false;
+        // The server has merged everything up to `sent`, so only edits made since
+        // then are new. Reusing the old base would make an edit that put a value
+        // back (Undo, + then -) look like no change and the server would keep the first save.
+        S.base = JSON.parse(sent);
         return saveConfig();
       }
       S.cfg = res.config;
+      S.base = clone(res.config);
       S.cfgDirty = false;
       setSaveState('ok');
+      // Show what the server kept, including changes made on another device.
       $('topSub').textContent = S.cfg.businessName;
+      renderAvailability();
+      renderRangePreview();
+      if (!S.settingsDirty) fillSettings();
       return res;
     }, function (err) {
       S.saving = false;
@@ -548,11 +612,27 @@
   $('aNext').addEventListener('click', function () { S.aMonth = monthAdd(S.aMonth, 1); renderMonth(); });
 
   function snapshot() { return { blocked: S.cfg.blocked.slice(), opened: S.cfg.opened.slice() }; }
-  function restore(snap) { S.cfg.blocked = snap.blocked; S.cfg.opened = snap.opened; }
+  // Undo takes back only what that one tap or range changed. Days another device
+  // blocked or opened since then are left alone.
+  function undoChange(before, after) {
+    ['blocked', 'opened'].forEach(function (k) {
+      var was = {}, now = {};
+      before[k].forEach(function (d) { was[d] = true; });
+      after[k].forEach(function (d) { now[d] = true; });
+      var list = S.cfg[k].filter(function (d) { return !(now[d] && !was[d]); });
+      before[k].forEach(function (d) { if (!now[d] && list.indexOf(d) < 0) list.push(d); });
+      S.cfg[k] = list.sort();
+    });
+  }
   function without(arr, d) { return arr.filter(function (x) { return x !== d; }); }
   function closeDay(d) {
     S.cfg.opened = without(S.cfg.opened, d);
     if (S.cfg.workDays.indexOf(D.weekday(d)) >= 0 && S.cfg.blocked.indexOf(d) < 0) S.cfg.blocked = S.cfg.blocked.concat([d]).sort();
+  }
+  // Range blocks cover days off too, so turning a weekday on later can't open a vacation day.
+  function blockDay(d) {
+    S.cfg.opened = without(S.cfg.opened, d);
+    if (S.cfg.blocked.indexOf(d) < 0) S.cfg.blocked = S.cfg.blocked.concat([d]).sort();
   }
   function openDay(d, extra) {
     S.cfg.blocked = without(S.cfg.blocked, d);
@@ -565,21 +645,24 @@
     var d = b.getAttribute('data-date');
     var before = snapshot();
     var wasOpen = Core.isWorkingDay(S.cfg, d);
-    if (wasOpen) closeDay(d); else openDay(d, true);
+    var wasBlocked = S.cfg.blocked.indexOf(d) >= 0;
+    // Unblocking a day only lifts the block: a range-blocked day off goes back to off.
+    if (wasOpen) closeDay(d); else openDay(d, !wasBlocked);
+    var after = snapshot();
     renderMonth(d);
     cfgChanged();
     var cnt = Core.bookedCounts(S.links)[d] || 0;
-    var msg = (wasOpen ? 'Blocked ' : 'Opened ') + shortDate(d) +
+    var msg = (wasOpen ? 'Blocked ' : wasBlocked ? 'Unblocked ' : 'Opened ') + shortDate(d) +
       (wasOpen && cnt ? ' · ' + cnt + ' booking kept' : '');
-    toast(msg, 'Undo', function () { restore(before); renderMonth(d); cfgChanged(); });
+    toast(msg, 'Undo', function () { undoChange(before, after); renderMonth(d); cfgChanged(); });
   });
 
   $('blockRangeBtn').addEventListener('click', function () {
     var from = S.today > S.aMonth + '-01' ? S.today : S.aMonth + '-01';
     openSheet(
       '<h3>Block a date range</h3><p>Vacation, equipment down, a rainy week — customers won’t see these days. Existing bookings stay put.</p>' +
-      '<div class="custom-range"><label>From<input class="inp" type="date" id="brFrom" min="' + S.today + '" value="' + from + '"></label>' +
-      '<label>To<input class="inp" type="date" id="brTo" min="' + S.today + '" value="' + D.addDays(from, 6) + '"></label></div>' +
+      '<div class="custom-range"><label>From<input class="inp" type="date" id="brFrom" min="' + esc(S.today) + '" value="' + esc(from) + '"></label>' +
+      '<label>To<input class="inp" type="date" id="brTo" min="' + esc(S.today) + '" value="' + esc(D.addDays(from, 6)) + '"></label></div>' +
       '<div class="sheet-actions two"><button class="btn btn-soft" id="brOpen">Unblock range</button>' +
       '<button class="btn btn-primary" id="brBlock">Block range</button></div>',
       function () {
@@ -590,12 +673,13 @@
           if (a < S.today) a = S.today;
           if (D.diffDays(a, b) > 366) { toast('Keep it under a year.'); return; }
           var before = snapshot();
-          for (var d = a; d <= b; d = D.addDays(d, 1)) { if (block) closeDay(d); else openDay(d, false); }
+          for (var d = a; d <= b; d = D.addDays(d, 1)) { if (block) blockDay(d); else openDay(d, false); }
+          var after = snapshot();
           S.aMonth = a.slice(0, 7);
           renderMonth();
           cfgChanged();
           closeSheet();
-          toast((block ? 'Blocked ' : 'Unblocked ') + md(a) + ' – ' + md(b), 'Undo', function () { restore(before); renderMonth(); cfgChanged(); });
+          toast((block ? 'Blocked ' : 'Unblocked ') + md(a) + ' – ' + md(b), 'Undo', function () { undoChange(before, after); renderMonth(); cfgChanged(); });
         }
         $('brBlock').onclick = function () { apply(true); };
         $('brOpen').onclick = function () { apply(false); };
@@ -703,9 +787,10 @@
     var btn = $('createLinkBtn');
     busy(btn, true);
     Api.call('admin.createLink', {
-      key: S.key, customer: $('lnCustomer').value.trim(), service: $('lnService').value.trim(), start: r.start, end: r.end
+      token: S.token, customer: $('lnCustomer').value.trim(), service: $('lnService').value.trim(), start: r.start, end: r.end
     }).then(function (res) {
       busy(btn, false);
+      S.mutSeq++;
       S.links.unshift(res.link);
       $('lnCustomer').value = '';
       $('lnService').value = '';
@@ -818,7 +903,8 @@
         (booked ? ' This also cancels their ' + D.pretty(l.date, 'day') + ' booking.' : ''),
       ok: 'Delete link', cancel: 'Keep', danger: true,
       onOk: function () {
-        return Api.call('admin.archiveLink', { key: S.key, id: l.id }).then(function () {
+        return Api.call('admin.archiveLink', { token: S.token, id: l.id }).then(function () {
+          S.mutSeq++;
           S.links = S.links.filter(function (x) { return x.id !== l.id; });
           closeSheet();
           renderLinks();
@@ -831,6 +917,16 @@
   }
 
   // ---------- Settings ----------
+  var SETTINGS_FIELDS = { businessName: 'sBiz', tagline: 'sTag', phone: 'sPhone', ownerName: 'sOwner',
+    notifyEmail: 'sEmail', ntfyTopic: 'sNtfy', addToCalendar: 'sCal' };
+  function readForm() {
+    var out = {};
+    Object.keys(SETTINGS_FIELDS).forEach(function (k) {
+      var el = $(SETTINGS_FIELDS[k]);
+      out[k] = el.type === 'checkbox' ? el.checked : el.value.trim();
+    });
+    return out;
+  }
   function fillSettings() {
     var c = S.cfg;
     $('sBiz').value = c.businessName;
@@ -841,6 +937,7 @@
     $('sEmail').placeholder = S.account ? S.account + ' (default)' : 'Your Google account email';
     $('sNtfy').value = c.ntfyTopic;
     $('sCal').checked = c.addToCalendar;
+    S.filled = readForm();
   }
   ['sBiz', 'sTag', 'sPhone', 'sOwner', 'sEmail', 'sNtfy', 'sCal'].forEach(function (id) {
     $(id).addEventListener('input', function () { S.settingsDirty = true; });
@@ -854,14 +951,14 @@
     S.settingsDirty = true;
   });
 
+  // Only fields changed on the form are saved. A field left alone keeps whatever
+  // the server has, even if another device changed it after this form was filled.
   function collectSettings() {
-    S.cfg.businessName = $('sBiz').value.trim() || S.cfg.businessName;
-    S.cfg.tagline = $('sTag').value.trim();
-    S.cfg.phone = $('sPhone').value.trim();
-    S.cfg.ownerName = $('sOwner').value.trim();
-    S.cfg.notifyEmail = $('sEmail').value.trim();
-    S.cfg.ntfyTopic = $('sNtfy').value.trim();
-    S.cfg.addToCalendar = $('sCal').checked;
+    var now = readForm(), was = S.filled || {};
+    Object.keys(now).forEach(function (k) {
+      if (now[k] === was[k] || (k === 'businessName' && !now[k])) return;
+      S.cfg[k] = now[k];
+    });
   }
 
   function saveSettings() {
@@ -900,7 +997,7 @@
     busy(btn, true);
     var first = S.settingsDirty ? saveSettings() : Promise.resolve();
     first.then(function () {
-      return Api.call('admin.testNotify', { key: S.key });
+      return Api.call('admin.testNotify', { token: S.token });
     }).then(function (res) {
       busy(btn, false);
       var r = res.results || {};
@@ -942,23 +1039,27 @@
       toast('Paste the Web app URL. It starts with https://script.google.com/ and ends with /exec');
       return;
     }
+    saveAuth('');
     Api.setLocalUrl(u);
-    store.set(KEY_PASS, '');
     location.reload();
   });
   $('disconnectBtn').addEventListener('click', function () {
+    saveAuth('');
     Api.setLocalUrl('');
-    store.set(KEY_PASS, '');
     location.reload();
   });
   $('signOutBtn').addEventListener('click', function () {
-    store.set(KEY_PASS, '');
-    S.key = '';
+    var token = S.token;
+    S.token = '';
+    saveAuth('');
+    Api.call('admin.logout', { token: token }).catch(function () { /* already signed out */ });
     showLock();
   });
-  $('passBtn').addEventListener('click', function () {
+  $('passBtn').addEventListener('click', function () { openPassSheet(); });
+  function openPassSheet() {
     openSheet(
-      '<h3>Change passcode</h3><p>Used to unlock the Scheduler on your devices.</p>' +
+      '<h3>Change passcode</h3><p>Used to unlock the Scheduler on your devices. Use ' + Core.minPasscode +
+      ' or more characters that aren\u2019t a word, name, date, or phone number.</p>' +
       '<label class="lbl" for="pw1">New passcode</label><input class="inp" id="pw1" type="password" autocomplete="new-password">' +
       '<label class="lbl" for="pw2">Type it again</label><input class="inp" id="pw2" type="password" autocomplete="new-password">' +
       '<div class="sheet-actions two"><button class="btn btn-soft" data-close>Cancel</button>' +
@@ -966,22 +1067,22 @@
       function () {
         $('pwSave').onclick = function () {
           var a = $('pw1').value, b = $('pw2').value;
-          if (a.length < 6) { toast('Use at least 6 characters.'); return; }
+          if (a.length < Core.minPasscode) { toast('Use at least ' + Core.minPasscode + ' characters.'); return; }
           if (a !== b) { toast('Those don’t match.'); return; }
           busy($('pwSave'), true);
-          Api.call('admin.setPasscode', { key: S.key, newKey: a }).then(function () {
-            S.key = a;
-            store.set(KEY_PASS, a);
+          Api.call('admin.setPasscode', { token: S.token, newKey: a }).then(function (res) {
+            S.token = res.token;
+            saveAuth(res.token);
             closeSheet();
-            toast('Passcode changed');
+            toast('Passcode changed. Other devices will need it to sign in again.');
           }, function (err) {
             busy($('pwSave'), false);
-            toast(err.message);
+            toast(errText(err));
           });
         };
       }
     );
-  });
+  }
   $('copyCodeBtn').addEventListener('click', function () {
     fetch('backend/Code.js', { cache: 'no-store' }).then(function (r) {
       if (!r.ok) throw new Error();
@@ -1002,30 +1103,169 @@
     });
   });
 
+  // ---------- Two-step sign-in ----------
+  function renderTwoStep() {
+    var on = S.twoStep;
+    document.querySelector('.twostep').classList.toggle('on', on);
+    $('twoStepState').textContent = on
+      ? 'On. Signing in on a new device needs your passcode and a code from your authenticator app.'
+      : 'Off. Signing in only needs your passcode.';
+    $('twoStepBtn').textContent = on ? 'Turn off' : 'Turn on';
+  }
+
+  // The QR code library is only loaded when it's needed.
+  var qrLoad = null;
+  function loadQr() {
+    if (window.qrcode) return Promise.resolve(window.qrcode);
+    if (!qrLoad) {
+      qrLoad = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = 'vendor/qrcode.js';
+        s.onload = function () { if (window.qrcode) resolve(window.qrcode); else reject(new Error('QR')); };
+        s.onerror = function () { qrLoad = null; reject(new Error('QR')); };
+        document.head.appendChild(s);
+      });
+    }
+    return qrLoad;
+  }
+  function codeField(id) {
+    return '<input class="inp code-entry" id="' + id + '" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" ' +
+      'autocomplete="one-time-code" placeholder="000000" aria-label="6-digit code">';
+  }
+  function readCode(id) { return $(id).value.replace(/\s+/g, ''); }
+
+  $('twoStepBtn').addEventListener('click', function () {
+    if (S.twoStep) openTwoStepOff(); else startTwoStep();
+  });
+
+  function startTwoStep() {
+    var btn = $('twoStepBtn');
+    busy(btn, true);
+    Api.call('admin.twoStepStart', { token: S.token }).then(function (res) {
+      busy(btn, false);
+      openSheet(
+        '<h3>Turn on two-step sign-in</h3>' +
+        '<p>Signing in on a new device will need your passcode and a 6-digit code from an app on your phone.</p>' +
+        '<ol class="steps">' +
+        '<li>Install a free authenticator app, such as <strong>Google Authenticator</strong> or <strong>Microsoft Authenticator</strong>.</li>' +
+        '<li>In the app, add an account: scan this code, or on this phone tap <strong>Open in app</strong>, or type the setup key.</li>' +
+        '<li>Type the 6-digit code the app shows, then tap <strong>Turn on</strong>.</li>' +
+        '</ol>' +
+        '<div class="qr" id="tsQr" role="img" aria-label="QR code for your authenticator app"></div>' +
+        '<div class="link-box setup-key" id="tsKey">' + esc(res.secret.replace(/(.{4})/g, '$1 ').trim()) + '</div>' +
+        '<div class="sheet-actions two"><a class="btn btn-soft" id="tsOpen" href="' + esc(res.uri) + '">Open in app</a>' +
+        '<button class="btn btn-soft" id="tsCopy">' + icon('copy') + 'Copy key</button></div>' +
+        '<label class="lbl" for="tsCode">6-digit code from the app</label>' + codeField('tsCode') +
+        '<div class="sheet-actions two"><button class="btn btn-soft" data-close>Cancel</button>' +
+        '<button class="btn btn-primary" id="tsConfirm"><span class="btn-text">Turn on</span><span class="spinner"></span></button></div>' +
+        '<p class="hint">Keep that phone safe. If you lose it, open Apps Script on a computer, pick <strong>turnOffTwoStepSignIn</strong> next to Run, and press Run.</p>',
+        function () {
+          loadQr().then(function (qrcode) {
+            var qr = qrcode(0, 'M');
+            qr.addData(res.uri);
+            qr.make();
+            $('tsQr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+          }).catch(function () { $('tsQr').hidden = true; });
+          $('tsCopy').onclick = function () { copyText(res.secret).then(function () { toast('Setup key copied'); }); };
+          $('tsConfirm').onclick = function () {
+            var code = readCode('tsCode');
+            if (!/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
+            busy($('tsConfirm'), true);
+            Api.call('admin.twoStepConfirm', { token: S.token, code: code }).then(function () {
+              S.twoStep = true;
+              renderTwoStep();
+              closeSheet();
+              toast('Two-step sign-in is on. Other devices will need a code to sign in again.');
+            }, function (err) {
+              busy($('tsConfirm'), false);
+              $('tsCode').value = '';
+              toast(errText(err));
+            });
+          };
+        }
+      );
+    }, function (err) {
+      busy(btn, false);
+      toast(errText(err));
+    });
+  }
+
+  function openTwoStepOff() {
+    openSheet(
+      '<h3>Turn off two-step sign-in?</h3>' +
+      '<p>Signing in will only need your passcode again. Type the current code from your authenticator app to confirm.</p>' +
+      '<label class="lbl" for="tsOffCode">6-digit code from the app</label>' + codeField('tsOffCode') +
+      '<div class="sheet-actions two"><button class="btn btn-soft" data-close>Keep it on</button>' +
+      '<button class="btn btn-danger" id="tsOff"><span class="btn-text">Turn off</span><span class="spinner"></span></button></div>',
+      function () {
+        $('tsOff').onclick = function () {
+          var code = readCode('tsOffCode');
+          if (!/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
+          busy($('tsOff'), true);
+          Api.call('admin.twoStepOff', { token: S.token, code: code }).then(function () {
+            S.twoStep = false;
+            renderTwoStep();
+            closeSheet();
+            toast('Two-step sign-in is off.');
+          }, function (err) {
+            busy($('tsOff'), false);
+            $('tsOffCode').value = '';
+            toast(errText(err));
+          });
+        };
+      }
+    );
+  }
+
   // ---------- Lock ----------
+  var LOCK_TEXT = $('lockText').textContent;
   function showLock(message) {
     $('lock').hidden = false;
     $('lockErr').textContent = message || '';
     $('lockDemo').hidden = Api.configured;
+    $('lockCode').hidden = true;
+    $('lockCode').value = '';
+    $('lockText').textContent = LOCK_TEXT;
     setTimeout(function () { $('lockInput').focus(); }, 200);
   }
   $('lockForm').addEventListener('submit', function (e) {
     e.preventDefault();
     var key = $('lockInput').value;
     if (!key) return;
+    var codeBox = $('lockCode');
+    var code = codeBox.hidden ? '' : codeBox.value.replace(/\s+/g, '');
+    if (!codeBox.hidden && !/^\d{6}$/.test(code)) {
+      $('lockErr').textContent = 'Type the 6-digit code from your authenticator app.';
+      codeBox.focus();
+      return;
+    }
     var btn = $('lockBtn');
     busy(btn, true);
     $('lockErr').textContent = '';
-    Api.call('admin.load', { key: key, site: siteUrl() }).then(function () {
+    Api.call('admin.login', { key: key, code: code, site: siteUrl() }).then(function (data) {
       busy(btn, false);
-      S.key = key;
-      store.set(KEY_PASS, key);
+      S.token = data.token;
+      saveAuth(data.token);
       $('lock').hidden = true;
       $('lockInput').value = '';
-      refresh();
+      codeBox.hidden = true;
+      codeBox.value = '';
+      applyLoad(data);
+      if (key.length < Core.minPasscode) {
+        toast('Your passcode is short and easier to guess. Use ' + Core.minPasscode + '+ characters.', 'Change', openPassSheet);
+      }
     }, function (err) {
       busy(btn, false);
-      $('lockErr').textContent = err.message;
+      // Two-step sign-in is on: ask for the code too. Both are checked together.
+      if (err.code === 'need_code') {
+        codeBox.hidden = false;
+        codeBox.value = '';
+        $('lockText').textContent = 'Two-step sign-in is on. Enter your passcode and the 6-digit code from your authenticator app.';
+        codeBox.focus();
+        return;
+      }
+      codeBox.value = '';
+      $('lockErr').textContent = errText(err);
       var card = document.querySelector('.lock-card');
       card.classList.remove('shake');
       void card.offsetWidth;
@@ -1070,6 +1310,6 @@
   if (Api.mode === 'live' && !Api.configured) $('sUrl').value = Api.apiUrl;
   var lastTab = store.get(KEY_TAB);
   if (lastTab && $('tab-' + lastTab)) goTab(lastTab);
-  if (Api.mode === 'live' && !S.key) showLock();
+  if (Api.mode === 'live' && !S.token) showLock();
   else refresh();
 })();

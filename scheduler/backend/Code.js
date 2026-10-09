@@ -9,15 +9,25 @@
  * Setup (about 10 minutes, on a computer — the Scheduler app's Settings tab
  * walks through it):
  *   1. Go to sheets.new  ->  Extensions  ->  Apps Script.
- *   2. Delete what's there and paste this whole file.
- *   3. Change ADMIN_PASSCODE below. Save.
- *   4. Pick "setup" in the function menu, press Run, approve the permissions.
+ *   2. Click in the code, press Ctrl+A (Cmd+A on a Mac) and Delete so the
+ *      editor is completely empty, then paste this whole file. The last line
+ *      must be the "END OF FILE" comment; delete anything below it.
+ *   3. Change ADMIN_PASSCODE below (10+ characters). Save.
+ *   4. "setup" is picked in the function menu next to Run. Press Run and
+ *      approve the permissions (if Google lists checkboxes, tick "Select all").
  *   5. Deploy -> New deployment -> type "Web app"
  *        Execute as: Me    Who has access: Anyone    -> Deploy.
  *   6. Copy the Web app URL into the Scheduler app (Settings -> Connection).
  *
- * After editing this code later: Deploy -> Manage deployments -> Edit (pencil)
- * -> Version: New version -> Deploy. The URL stays the same.
+ * Two-step sign-in (optional) is turned on in the Scheduler's Settings. Lost the
+ * phone with your authenticator app? Pick "turnOffTwoStepSignIn" next to Run and
+ * press Run.
+ *
+ * Updating to a newer version of this file: paste over the old code the same
+ * way (step 2) and Save. You don't need to change the passcode or run setup
+ * again. Then Deploy -> Manage deployments -> Edit (pencil) -> Version: New
+ * version -> Deploy. The URL stays the same. Opening the URL in a browser shows
+ * the version that's live.
  *
  * The same file also runs in the browser for the apps' demo mode, so all the
  * Apps Script-only calls live inside functions.
@@ -25,13 +35,60 @@
 
 // ---- Your settings ---------------------------------------------------------
 
-// Passcode for the Scheduler app (6+ characters). Running `setup` stores it in
+// Passcode for the Scheduler app (10+ characters). Running `setup` stores it in
 // Script Properties; after that you can change it from the app. Forgot it?
-// Put a new one here and run `setup` again.
+// Put a new one here and run `setup` again (that also signs out every device).
 const ADMIN_PASSCODE = 'CHANGE-ME';
 
 // Decides what "today" is and which day calendar events land on.
 const TIME_ZONE = 'America/New_York';
+
+
+// Run this once from the editor: it asks for permissions, adds the sheet tabs
+// and saves your passcode. It's the first function in this file so the editor's
+// Run menu has it picked already. Running it again is safe; it also lifts a
+// wrong-passcode lockout.
+function setup() {
+  var props = props_();
+  var min = BookingCore.minPasscode;
+  var fromCode = ADMIN_PASSCODE !== 'CHANGE-ME' ? String(ADMIN_PASSCODE) : '';
+  if (fromCode && fromCode.length < min) {
+    throw new Error('ADMIN_PASSCODE needs at least ' + min + ' characters. Change it, save, then run setup again.');
+  }
+  var stored = props.getProperty('ADMIN_PASSCODE');
+  if (!stored && !fromCode) {
+    throw new Error('First change ADMIN_PASSCODE at the top of this file (' + min + '+ characters), save, then run setup again.');
+  }
+  if (fromCode && fromCode !== stored) {
+    props.setProperty('ADMIN_PASSCODE', fromCode);
+    props.deleteProperty('TOKENS'); // a new passcode signs out every device
+  }
+
+  var ss = spreadsheet_();
+  ensureSheet_(ss, 'Links', LINK_COLS_);
+  ensureSheet_(ss, 'Activity', ACTIVITY_COLS_);
+  var blank = ss.getSheetByName('Sheet1');
+  if (blank && blank.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(blank);
+  if (!props.getProperty('CONFIG')) props.setProperty('CONFIG', JSON.stringify(BookingCore.defaults()));
+
+  // Touch each service so every permission is granted now, not on the first booking.
+  CalendarApp.getDefaultCalendar().getName();
+  MailApp.getRemainingDailyQuota();
+  CacheService.getScriptCache().remove('authFails');
+
+  Logger.log('Setup complete. Bookings sheet: ' + ss.getUrl());
+  Logger.log('Next: Deploy -> New deployment -> Web app (Execute as: Me, Who has access: Anyone).');
+}
+
+// Lost the phone with your authenticator app? Pick this next to Run and press Run.
+// It turns two-step sign-in off, signs out every device and lifts a wrong-passcode
+// pause. Then sign in with your passcode and turn two-step sign-in on again.
+function turnOffTwoStepSignIn() {
+  var props = props_();
+  ['TOTP_SECRET', 'TOTP_LAST', 'TOTP_PENDING', 'TOKENS'].forEach(function (k) { props.deleteProperty(k); });
+  CacheService.getScriptCache().remove('authFails');
+  Logger.log('Two-step sign-in is off and every device is signed out. Sign in with your passcode, then turn it on again in Settings.');
+}
 
 
 // ---- Booking logic (shared with the browser demo) ---------------------------
@@ -45,6 +102,9 @@ var BookingCore = (function () {
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
     'August', 'September', 'October', 'November', 'December'];
   var ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  var VERSION = 2;
+  var MIN_PASSCODE = 10; // for new passcodes; one saved before this rule still works
+  var LINK_KEEP_DAYS = 30; // a customer link stops working this long after its service day
 
   var DEFAULTS = {
     businessName: 'Splash Pressure Washing',
@@ -198,9 +258,16 @@ var BookingCore = (function () {
     for (var i = 0; i < links.length; i++) if (links[i].id === id) return links[i];
     return null;
   }
-  function liveLink(links, id) {
+  // A link stops working 30 days after its service day, or 30 days after its
+  // window ends if no day is booked, so an old text can't show a name and date
+  // forever. The owner keeps the record.
+  function expired(link, today) {
+    var last = link.status === 'booked' && isDate(link.date) ? link.date : link.end;
+    return isDate(last) && addDays(last, LINK_KEEP_DAYS) < today;
+  }
+  function liveLink(links, id, today) {
     var link = findLink(links, id);
-    if (!link || link.archived) {
+    if (!link || link.archived || expired(link, today)) {
       fail('not_found', "This scheduling link isn't active anymore. Please reach out to us for a new one.");
     }
     return link;
@@ -217,6 +284,17 @@ var BookingCore = (function () {
     }
   }
 
+  // Notes the owner puts in (parentheses) on a link's customer name stay private,
+  // including notes with parentheses inside them, like a (757) phone number.
+  function publicName(s) {
+    s = String(s || '');
+    for (var prev = null; prev !== s;) {
+      prev = s;
+      s = s.replace(/\([^()]*\)/g, ' ');
+    }
+    return s.replace(/\(.*$/, ' ').replace(/\)/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
   // What the customer's page gets. Never includes other customers' details.
   function publicLink(cfg, link, links, today) {
     var history = link.history || [];
@@ -225,7 +303,7 @@ var BookingCore = (function () {
       business: { name: cfg.businessName, tagline: cfg.tagline, phone: cfg.phone },
       link: {
         id: link.id,
-        customer: link.customer,
+        customer: publicName(link.customer),
         service: link.service,
         start: link.start,
         end: link.end,
@@ -269,14 +347,15 @@ var BookingCore = (function () {
 
   ACTIONS['link.get'] = function (req, env) {
     var links = env.store.listLinks();
-    var link = liveLink(links, req.id);
+    var today = env.today();
+    var link = liveLink(links, req.id, today);
     var cfg = loadConfig(env);
     if (!req.preview) {
       try {
         env.store.patchLink(link.id, { views: (+link.views || 0) + 1, lastViewed: env.now() });
       } catch (e) { /* a missed view count is fine */ }
     }
-    return publicLink(cfg, link, links, env.today());
+    return publicLink(cfg, link, links, today);
   };
 
   ACTIONS['link.book'] = function (req, env) {
@@ -286,7 +365,7 @@ var BookingCore = (function () {
     return env.lock(function () {
       var today = env.today(), now = env.now();
       var links = env.store.listLinks();
-      var link = liveLink(links, req.id);
+      var link = liveLink(links, req.id, today);
       var cfg = loadConfig(env);
       var wasBooked = link.status === 'booked';
       var prev = wasBooked ? link.date : '';
@@ -301,8 +380,8 @@ var BookingCore = (function () {
       var type = !wasBooked ? 'booked' : (date !== prev ? 'changed' : 'updated');
       link.name = name;
       if (hasInfo) {
-        link.phone = clean(req.phone, 30);
-        link.address = clean(req.address, 200);
+        link.phone = clean(req.phone, 30) || link.phone;
+        link.address = clean(req.address, 200) || link.address;
       }
       link.status = 'booked';
       link.date = date;
@@ -320,7 +399,7 @@ var BookingCore = (function () {
     return env.lock(function () {
       var today = env.today(), now = env.now();
       var links = env.store.listLinks();
-      var link = liveLink(links, req.id);
+      var link = liveLink(links, req.id, today);
       var cfg = loadConfig(env);
       if (link.status !== 'booked') return publicLink(cfg, link, links, today);
       if (link.date < today) fail('past', 'This service day has already passed.');
@@ -369,14 +448,37 @@ var BookingCore = (function () {
       links: links,
       activity: env.store.listActivity(80),
       today: today,
-      account: env.account ? env.account() : ''
+      account: env.account ? env.account() : '',
+      twoStep: !!(env.twoStepOn && env.twoStepOn())
     };
   };
 
+  // `base` is the config the device last loaded. Only what the device actually
+  // changed since then is applied, so edits made on another phone or computer
+  // in the meantime survive.
+  function mergeConfig(current, base, client) {
+    var out = {};
+    Object.keys(DEFAULTS).forEach(function (k) {
+      if (Array.isArray(DEFAULTS[k])) {
+        var b = toSet(base[k]), c = toSet(client[k]);
+        var keep = current[k].filter(function (x) { return !(b[x] && !c[x]); });
+        client[k].forEach(function (x) { if (!b[x] && keep.indexOf(x) < 0) keep.push(x); });
+        out[k] = keep;
+      } else {
+        out[k] = JSON.stringify(client[k]) === JSON.stringify(base[k]) ? current[k] : client[k];
+      }
+    });
+    return out;
+  }
+
   ACTIONS['admin.saveConfig'] = function (req, env) {
     return env.lock(function () {
+      var today = env.today();
       var current = loadConfig(env);
-      var next = normalizeConfig(req.config, env.today());
+      var client = normalizeConfig(req.config, today);
+      var next = req.base && typeof req.base === 'object'
+        ? normalizeConfig(mergeConfig(current, normalizeConfig(req.base, today), client), today)
+        : client;
       if (!next.siteUrl) next.siteUrl = current.siteUrl;
       env.store.setConfig(next);
       return { config: next };
@@ -442,8 +544,52 @@ var BookingCore = (function () {
 
   ACTIONS['admin.setPasscode'] = function (req, env) {
     var next = String(req.newKey || '');
-    if (next.length < 6) fail('weak', 'Use at least 6 characters.');
-    env.setPasscode(next);
+    if (next.length < MIN_PASSCODE) fail('weak', 'Use at least ' + MIN_PASSCODE + ' characters.');
+    // Signs out every other device; this one gets a fresh token.
+    return { token: env.setPasscode(next) };
+  };
+
+  // The passcode is checked only here. A signed-in device keeps working with its
+  // token even while wrong-passcode attempts have new sign-ins locked out. With
+  // two-step sign-in on, the passcode and the 6-digit code are checked together,
+  // so a wrong answer never says which of the two was wrong.
+  ACTIONS['admin.login'] = function (req, env) {
+    var code = cleanCode(req.code);
+    if (!code && env.twoStepOn && env.twoStepOn()) {
+      fail('need_code', 'Enter the 6-digit code from your authenticator app.');
+    }
+    env.checkAdmin(String(req.key || ''), code);
+    var token = env.issueToken();
+    var data = ACTIONS['admin.load'](req, env);
+    data.token = token;
+    return data;
+  };
+
+  function cleanCode(v) { return String(v || '').replace(/\s+/g, ''); }
+  function needLive(env, fn) {
+    if (!env[fn]) fail('demo', 'Two-step sign-in works once the Scheduler is live.');
+  }
+
+  // Two-step sign-in: start hands this signed-in device a new secret to add to an
+  // authenticator app; confirm turns it on once a code from the app matches.
+  ACTIONS['admin.twoStepStart'] = function (req, env) {
+    needLive(env, 'twoStepStart');
+    return env.twoStepStart();
+  };
+  ACTIONS['admin.twoStepConfirm'] = function (req, env) {
+    needLive(env, 'twoStepConfirm');
+    env.twoStepConfirm(cleanCode(req.code), String(req.token || ''));
+    return { twoStep: true };
+  };
+  // Turning it off takes a current code, so a stolen sign-in alone can't do it.
+  ACTIONS['admin.twoStepOff'] = function (req, env) {
+    needLive(env, 'twoStepOff');
+    env.twoStepOff(cleanCode(req.code));
+    return { twoStep: false };
+  };
+
+  ACTIONS['admin.logout'] = function (req, env) {
+    env.revokeToken(String(req.token || ''));
     return {};
   };
 
@@ -452,7 +598,17 @@ var BookingCore = (function () {
     var action = String(req.action || '');
     try {
       if (!ACTIONS[action]) fail('bad_action', 'Unknown request.');
-      if (action.indexOf('admin.') === 0) env.checkAdmin(String(req.key || ''));
+      if (action.indexOf('admin.') === 0 && action !== 'admin.login') {
+        if (req.token || req.key === undefined) {
+          if (!env.checkToken(String(req.token || ''))) fail('signed_out', 'Please enter your passcode again.');
+        } else {
+          // Schedulers from before sign-in tokens send the passcode with every
+          // request. Same check and lockout as signing in. They can't send a
+          // code, so this way in is closed once two-step sign-in is on.
+          if (env.twoStepOn && env.twoStepOn()) fail('signed_out', 'Please reopen the Scheduler and sign in again.');
+          env.checkAdmin(String(req.key || ''));
+        }
+      }
       var data = ACTIONS[action](req, env) || {};
       data.ok = true;
       return data;
@@ -464,6 +620,8 @@ var BookingCore = (function () {
   }
 
   return {
+    version: VERSION,
+    minPasscode: MIN_PASSCODE,
     handle: handle,
     fail: fail,
     describe: describe,
@@ -492,13 +650,11 @@ function doPost(e) {
   return respond_(req);
 }
 
-// GET works too (?q=<json>); handy for checking the deployment in a browser.
-function doGet(e) {
-  var q = e && e.parameter && e.parameter.q;
-  if (!q) return json_({ ok: true, service: 'Splash Booking', time: new Date().toISOString() });
-  var req = {};
-  try { req = JSON.parse(q); } catch (err) { req = {}; }
-  return respond_(req);
+// Opening the web app URL in a browser shows only this status. Bookings are read
+// and changed through POST requests from the pages, never through a web address.
+function doGet() {
+  return json_({ ok: true, service: 'Splash Booking', version: BookingCore.version,
+    ready: !!storedPasscode_(), time: new Date().toISOString() });
 }
 
 function respond_(req) {
@@ -516,32 +672,6 @@ function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
-/** Run this once from the editor (it asks for permissions), then deploy. */
-function setup() {
-  var props = props_();
-  var stored = props.getProperty('ADMIN_PASSCODE');
-  var fromCode = ADMIN_PASSCODE !== 'CHANGE-ME' && ADMIN_PASSCODE.length >= 6 ? ADMIN_PASSCODE : '';
-  if (!stored && !fromCode) {
-    throw new Error('First change ADMIN_PASSCODE at the top of this file (6+ characters), save, then run setup again.');
-  }
-  if (fromCode && fromCode !== stored) props.setProperty('ADMIN_PASSCODE', fromCode);
-
-  var ss = spreadsheet_();
-  ensureSheet_(ss, 'Links', LINK_COLS_);
-  ensureSheet_(ss, 'Activity', ACTIVITY_COLS_);
-  var blank = ss.getSheetByName('Sheet1');
-  if (blank && blank.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(blank);
-  if (!props.getProperty('CONFIG')) props.setProperty('CONFIG', JSON.stringify(BookingCore.defaults()));
-
-  // Touch each service so every permission is granted now, not on the first booking.
-  CalendarApp.getDefaultCalendar().getName();
-  MailApp.getRemainingDailyQuota();
-  CacheService.getScriptCache().remove('authFails');
-
-  Logger.log('Setup complete. Bookings sheet: ' + ss.getUrl());
-  Logger.log('Next: Deploy -> New deployment -> Web app (Execute as: Me, Who has access: Anyone).');
-}
-
 /** Optional: run from the editor to check email (and push, if set up) without the app. */
 function sendTestAlert() {
   var cfg = BookingCore.normalizeConfig(JSON.parse(props_().getProperty('CONFIG') || '{}'));
@@ -554,10 +684,48 @@ var ACTIVITY_COLS_ = ['at', 'linkId', 'type', 'date', 'from', 'name', 'by'];
 
 function props_() { return PropertiesService.getScriptProperties(); }
 
+// The passcode setup() saved. If setup was never run, the one typed into this
+// file works too and is saved for next time.
 function storedPasscode_() {
-  var p = props_().getProperty('ADMIN_PASSCODE');
-  return p && p.length >= 6 ? p : '';
+  var props = props_();
+  var p = props.getProperty('ADMIN_PASSCODE');
+  if (p && p.length >= 6) return p;
+  if (ADMIN_PASSCODE !== 'CHANGE-ME' && String(ADMIN_PASSCODE).length >= BookingCore.minPasscode) {
+    props.setProperty('ADMIN_PASSCODE', String(ADMIN_PASSCODE));
+    return String(ADMIN_PASSCODE);
+  }
+  return '';
 }
+
+function withLock_(fn, optional) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(optional ? 1500 : 20000)) {
+    if (optional) return null;
+    BookingCore.fail('busy', "We're finishing another request \u2014 please try again in a moment.");
+  }
+  try {
+    var out = fn();
+    SpreadsheetApp.flush(); // land every sheet write before the next request can read
+    return out;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Signed-in devices hold a random token; only its SHA-256 is stored.
+function tokenHash_(token) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token, Utilities.Charset.UTF_8)
+    .map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+}
+function readTokens_() {
+  try { return JSON.parse(props_().getProperty('TOKENS') || '[]'); } catch (e) { return []; }
+}
+// A sign-in lasts 90 days; after that the device signs in again (with a code,
+// if two-step sign-in is on).
+var TOKEN_DAYS_ = 90;
+function tokenFresh_(t) { return Date.now() - Date.parse(t.at) < TOKEN_DAYS_ * 86400000; }
+function writeTokens_(list) { props_().setProperty('TOKENS', JSON.stringify(list.filter(tokenFresh_).slice(-25))); }
+function newToken_() { return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ''); }
 
 function gasEnv_() {
   return {
@@ -565,41 +733,182 @@ function gasEnv_() {
     today: function () { return Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd'); },
     now: function () { return new Date().toISOString(); },
     newId: newId_,
-    lock: function (fn, opts) {
-      var optional = !!(opts && opts.optional);
-      var lock = LockService.getScriptLock();
-      if (!lock.tryLock(optional ? 1500 : 20000)) {
-        if (optional) return null;
-        BookingCore.fail('busy', "We're finishing another request — please try again in a moment.");
-      }
-      try { return fn(); } finally { lock.releaseLock(); }
-    },
-    checkAdmin: function (key) {
+    lock: function (fn, opts) { return withLock_(fn, !!(opts && opts.optional)); },
+    // Ten wrong passcodes pause every sign-in for 15 minutes, the right passcode
+    // included, so nobody can keep guessing at full speed. Devices already
+    // signed in keep working. Running setup() in the editor lifts the pause.
+    checkAdmin: function (key, code) {
       var stored = storedPasscode_();
-      if (!stored) BookingCore.fail('not_setup', 'Finish setup first: set ADMIN_PASSCODE in the script and run setup.');
-      var cache = CacheService.getScriptCache();
-      var fails = +(cache.get('authFails') || 0);
-      if (fails >= 10) BookingCore.fail('locked', 'Too many wrong passcodes. Wait 15 minutes and try again.');
-      if (key !== stored) {
-        cache.put('authFails', String(fails + 1), 900);
-        BookingCore.fail('bad_key', 'That passcode is not right.');
+      if (!stored) {
+        BookingCore.fail('not_setup', 'Setup isn\u2019t finished. In Apps Script, set ADMIN_PASSCODE at the top of the code ' +
+          '(10+ characters), save, then pick \u201csetup\u201d next to Run and press Run.');
       }
+      var cache = CacheService.getScriptCache();
+      var locked = 'Too many wrong passcodes. Wait 15 minutes and try again.';
+      if (+(cache.get('authFails') || 0) >= 10) BookingCore.fail('locked', locked);
+      // Counted under the script lock so a burst of parallel guesses can't slip past the limit.
+      var result = withLock_(function () {
+        var props = props_();
+        var fails = +(cache.get('authFails') || 0);
+        if (fails >= 10) return 'locked';
+        var secret = props.getProperty('TOTP_SECRET');
+        var step = secret ? totpMatch_(secret, String(code || ''), totpLast_()) : 0;
+        if (key === stored && step >= 0) {
+          if (fails) cache.remove('authFails');
+          if (secret) props.setProperty('TOTP_LAST', String(step)); // each code works once
+          return 'ok';
+        }
+        cache.put('authFails', String(fails + 1), 900);
+        return secret ? 'wrong2' : 'wrong';
+      });
+      if (result === 'locked') BookingCore.fail('locked', locked);
+      if (result === 'wrong2') BookingCore.fail('bad_key', 'That passcode or code is not right.');
+      if (result !== 'ok') BookingCore.fail('bad_key', 'That passcode is not right.');
     },
-    setPasscode: function (next) { props_().setProperty('ADMIN_PASSCODE', next); },
+    twoStepOn: function () { return !!props_().getProperty('TOTP_SECRET'); },
+    twoStepStart: function () {
+      var props = props_();
+      if (props.getProperty('TOTP_SECRET')) {
+        BookingCore.fail('two_step_on', 'Two-step sign-in is already on. Turn it off first to move it to another app.');
+      }
+      var secret = base32Encode_(randomBytes_(20));
+      props.setProperty('TOTP_PENDING', secret);
+      var name = encodeURIComponent('Splash Scheduler');
+      return { secret: secret, uri: 'otpauth://totp/' + name + '?secret=' + secret + '&issuer=' + name + '&algorithm=SHA1&digits=6&period=30' };
+    },
+    twoStepConfirm: function (code, token) {
+      withLock_(function () {
+        var props = props_();
+        var pending = props.getProperty('TOTP_PENDING');
+        if (!pending) BookingCore.fail('two_step_expired', 'Start again: tap Turn on.');
+        var step = totpMatch_(pending, code, -1);
+        if (step < 0) BookingCore.fail('bad_code', 'That code doesn\u2019t match. Type the newest code the app shows.');
+        props.setProperty('TOTP_SECRET', pending);
+        props.setProperty('TOTP_LAST', String(step));
+        props.deleteProperty('TOTP_PENDING');
+        // Devices that signed in before this must sign in again with a code.
+        var h = token ? tokenHash_(token) : '';
+        writeTokens_(readTokens_().filter(function (t) { return t.h === h; }));
+      });
+    },
+    twoStepOff: function (code) {
+      var cache = CacheService.getScriptCache();
+      var result = withLock_(function () {
+        var props = props_();
+        var fails = +(cache.get('authFails') || 0);
+        if (fails >= 10) return 'locked';
+        var secret = props.getProperty('TOTP_SECRET');
+        if (secret && totpMatch_(secret, code, totpLast_()) < 0) {
+          cache.put('authFails', String(fails + 1), 900);
+          return 'wrong';
+        }
+        ['TOTP_SECRET', 'TOTP_LAST', 'TOTP_PENDING'].forEach(function (k) { props.deleteProperty(k); });
+        if (fails) cache.remove('authFails');
+        return 'ok';
+      });
+      if (result === 'locked') BookingCore.fail('locked', 'Too many wrong passcodes. Wait 15 minutes and try again.');
+      if (result === 'wrong') BookingCore.fail('bad_code', 'That code doesn\u2019t match. Type the newest code the app shows.');
+    },
+    checkToken: function (token) {
+      if (!/^[0-9a-f]{64}$/.test(token)) return false;
+      var h = tokenHash_(token);
+      return readTokens_().some(function (t) { return t.h === h && tokenFresh_(t); });
+    },
+    issueToken: function () {
+      var token = newToken_();
+      withLock_(function () {
+        writeTokens_(readTokens_().concat([{ h: tokenHash_(token), at: new Date().toISOString() }]));
+      });
+      return token;
+    },
+    revokeToken: function (token) {
+      if (!token) return;
+      var h = tokenHash_(token);
+      withLock_(function () { writeTokens_(readTokens_().filter(function (t) { return t.h !== h; })); });
+    },
+    setPasscode: function (next) {
+      var token = newToken_();
+      withLock_(function () {
+        props_().setProperty('ADMIN_PASSCODE', next);
+        writeTokens_([{ h: tokenHash_(token), at: new Date().toISOString() }]);
+      });
+      return token;
+    },
     notify: gasNotify_,
     account: function () { return Session.getEffectiveUser().getEmail(); },
     log: function (m) { console.error(m && m.stack ? m.stack : m); }
   };
 }
 
-function newId_() {
-  var hex = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+// Random bytes from Google's UUIDs (random version 4), skipping the two bytes in
+// each that carry fixed version/variant bits.
+function randomBytes_(n) {
   var bytes = [];
-  for (var i = 0; i < hex.length && bytes.length < 10; i += 2) {
-    if (i === 12 || i === 16 || i === 44 || i === 48) continue; // UUID version/variant bytes aren't random
-    bytes.push(parseInt(hex.substr(i, 2), 16));
+  while (bytes.length < n) {
+    var hex = Utilities.getUuid().replace(/-/g, '');
+    for (var i = 0; i < 32 && bytes.length < n; i += 2) {
+      if (i === 12 || i === 16) continue;
+      bytes.push(parseInt(hex.substr(i, 2), 16));
+    }
   }
-  return BookingCore.idFromBytes(bytes);
+  return bytes;
+}
+
+function newId_() { return BookingCore.idFromBytes(randomBytes_(10)); }
+
+// ---- Two-step sign-in codes (RFC 6238, the standard authenticator apps use) ----
+
+var B32_ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function base32Encode_(bytes) {
+  var out = '', bits = 0, value = 0;
+  bytes.forEach(function (b) {
+    value = (value << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      out += B32_[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  });
+  if (bits > 0) out += B32_[(value << (5 - bits)) & 31];
+  return out;
+}
+function base32Decode_(s) {
+  var bytes = [], bits = 0, value = 0;
+  String(s).replace(/[\s=]/g, '').toUpperCase().split('').forEach(function (ch) {
+    var v = B32_.indexOf(ch);
+    if (v < 0) return;
+    value = (value << 5) | v;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  });
+  return bytes;
+}
+function signedBytes_(bytes) { return bytes.map(function (b) { return b > 127 ? b - 256 : b; }); }
+function totpAt_(secret, step) {
+  var counter = [];
+  for (var i = 7, n = step; i >= 0; i--, n = Math.floor(n / 256)) counter[i] = n % 256;
+  var mac = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1,
+    signedBytes_(counter), signedBytes_(base32Decode_(secret)));
+  var off = mac[mac.length - 1] & 15;
+  var bin = ((mac[off] & 127) * 16777216) + ((mac[off + 1] & 255) << 16) + ((mac[off + 2] & 255) << 8) + (mac[off + 3] & 255);
+  return ('000000' + (bin % 1000000)).slice(-6);
+}
+function totpLast_() {
+  var v = props_().getProperty('TOTP_LAST');
+  return v === null || v === undefined || v === '' ? -1 : +v;
+}
+// The 30-second step a code belongs to (now, or one either side for a phone clock
+// that's a little off), or -1. Steps at or before `last` were already used.
+function totpMatch_(secret, code, last) {
+  if (!/^\d{6}$/.test(code)) return -1;
+  var now = Math.floor(Date.now() / 30000);
+  for (var s = now - 1; s <= now + 1; s++) {
+    if (s > last && totpAt_(secret, s) === code) return s;
+  }
+  return -1;
 }
 
 // ---- Google Sheet storage ----
@@ -783,10 +1092,12 @@ function sendEmail_(evt) {
   MailApp.sendEmail({ to: to, subject: msg.subject, body: text, htmlBody: html, name: cfg.businessName + ' Bookings' });
 }
 
+// ntfy.sh is a public server, so a push only says what happened: no names,
+// dates, phone numbers or addresses. Tapping it opens the Scheduler.
 function sendPush_(evt) {
-  var cfg = evt.cfg, l = evt.link || {};
+  var cfg = evt.cfg;
   var msg = BookingCore.describe(evt);
-  var body = msg.line + (l.phone ? '\n' + l.phone : '') + (l.address ? '\n' + l.address : '');
+  var body = evt.type === 'test' ? msg.line : 'Open your Scheduler to see the details.';
   var headers = { Title: msg.title, Tags: msg.tag, Priority: 'high' }; // header values must stay ASCII
   if (schedulerUrl_(cfg)) headers.Click = schedulerUrl_(cfg);
   var res = UrlFetchApp.fetch('https://ntfy.sh/' + encodeURIComponent(cfg.ntfyTopic), {
@@ -809,7 +1120,9 @@ function syncCalendar_(evt) {
     if (existing) existing.deleteEvent();
     return l.eventId ? '' : undefined;
   }
-  if (!cfg.addToCalendar) return undefined;
+  // With calendar sync off, no new events are made, but one that already exists
+  // still follows its booking so the calendar never shows a stale day.
+  if (!cfg.addToCalendar && !existing) return undefined;
 
   var day = Utilities.parseDate(l.date + ' 12:00', TIME_ZONE, 'yyyy-MM-dd HH:mm');
   var title = (cfg.businessName.split(' ')[0] || 'Job') + ': ' + l.name + (l.service ? ' — ' + l.service : '');
@@ -829,3 +1142,5 @@ function syncCalendar_(evt) {
   }
   return cal.createAllDayEvent(title, day, { description: desc, location: l.address || '' }).getId();
 }
+
+// ---- END OF FILE (Splash Booking backend) ----
