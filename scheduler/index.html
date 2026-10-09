@@ -305,10 +305,13 @@
       <p id="lockText">Enter the passcode you set in your Google Apps Script.</p>
       <form id="lockForm">
         <input class="inp" id="lockInput" type="password" placeholder="Passcode" autocomplete="current-password" required>
-        <input class="inp lock-code" id="lockCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code" aria-label="6-digit code from your authenticator app" hidden>
+        <input class="inp lock-code" id="lockCode" type="text" inputmode="numeric" maxlength="7" placeholder="6-digit code" autocomplete="one-time-code" aria-label="6-digit code from your authenticator app" hidden>
+        <input class="inp lock-rescue" id="lockRescue" type="text" maxlength="24" placeholder="One-time sign-in code" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="One-time sign-in code from Apps Script" hidden>
         <div class="lock-err" id="lockErr"></div>
         <button class="btn btn-primary btn-block" id="lockBtn" type="submit"><span class="btn-text">Unlock</span><span class="spinner"></span></button>
       </form>
+      <button class="link-btn" id="lockRescueBtn" type="button" hidden>Locked out? Use a one-time sign-in code</button>
+      <p class="lock-help" id="lockRescueHelp" hidden>On a computer, open Apps Script, pick <strong>makeOneTimeSignInCode</strong> next to Run, press Run, and type the code it shows here along with your passcode.</p>
       <button class="link-btn" id="lockDemo">Use demo mode instead</button>
     </div>
   </div>

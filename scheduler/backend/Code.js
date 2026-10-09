@@ -21,7 +21,8 @@
  *
  * Two-step sign-in (optional) is turned on in the Scheduler's Settings. Lost the
  * phone with your authenticator app? Pick "turnOffTwoStepSignIn" next to Run and
- * press Run.
+ * press Run. Kept out by a wrong-passcode pause someone keeps triggering? Run
+ * "makeOneTimeSignInCode" and type the code it shows on the sign-in screen.
  *
  * Updating to a newer version of this file: paste over the old code the same
  * way (step 2) and Save. You don't need to change the passcode or run setup
@@ -46,8 +47,9 @@ const TIME_ZONE = 'America/New_York';
 
 // Run this once from the editor: it asks for permissions, adds the sheet tabs
 // and saves your passcode. It's the first function in this file so the editor's
-// Run menu has it picked already. Running it again is safe; it also lifts a
-// wrong-passcode lockout.
+// Run menu has it picked already. Running it again is safe: it only applies the
+// passcode typed above when you've changed it since setup last ran (so it never
+// undoes a passcode you changed in the app), and it lifts a wrong-passcode pause.
 function setup() {
   var props = props_();
   var min = BookingCore.minPasscode;
@@ -55,14 +57,24 @@ function setup() {
   if (fromCode && fromCode.length < min) {
     throw new Error('ADMIN_PASSCODE needs at least ' + min + ' characters. Change it, save, then run setup again.');
   }
-  var stored = props.getProperty('ADMIN_PASSCODE');
-  if (!stored && !fromCode) {
-    throw new Error('First change ADMIN_PASSCODE at the top of this file (' + min + '+ characters), save, then run setup again.');
-  }
-  if (fromCode && fromCode !== stored) {
-    props.setProperty('ADMIN_PASSCODE', fromCode);
-    props.deleteProperty('TOKENS'); // a new passcode signs out every device
-  }
+  var said = withLock_(function () {
+    var stored = props.getProperty('ADMIN_PASSCODE');
+    if (!stored && !fromCode) {
+      throw new Error('First change ADMIN_PASSCODE at the top of this file (' + min + '+ characters), save, then run setup again.');
+    }
+    var fileHash = fromCode ? tokenHash_(fromCode) : '';
+    var out = 'Passcode: unchanged.';
+    if (fromCode && fromCode !== stored && fileHash !== props.getProperty('FILE_PASS_HASH')) {
+      props.setProperty('ADMIN_PASSCODE', fromCode);
+      props.deleteProperty('TOKENS'); // a new passcode signs out every device
+      out = stored ? 'Passcode: saved the new one from the top of this file. Every device is signed out.'
+        : 'Passcode: saved.';
+    } else if (fromCode && fromCode !== stored) {
+      out = 'Passcode: kept the one you set in the app. To replace it, type a different one at the top of this file, save, and run setup again.';
+    }
+    if (fromCode) props.setProperty('FILE_PASS_HASH', fileHash);
+    return out;
+  });
 
   var ss = spreadsheet_();
   ensureSheet_(ss, 'Links', LINK_COLS_);
@@ -76,6 +88,7 @@ function setup() {
   MailApp.getRemainingDailyQuota();
   CacheService.getScriptCache().remove('authFails');
 
+  Logger.log(said);
   Logger.log('Setup complete. Bookings sheet: ' + ss.getUrl());
   Logger.log('Next: Deploy -> New deployment -> Web app (Execute as: Me, Who has access: Anyone).');
 }
@@ -84,10 +97,24 @@ function setup() {
 // It turns two-step sign-in off, signs out every device and lifts a wrong-passcode
 // pause. Then sign in with your passcode and turn two-step sign-in on again.
 function turnOffTwoStepSignIn() {
-  var props = props_();
-  ['TOTP_SECRET', 'TOTP_LAST', 'TOTP_PENDING', 'TOKENS'].forEach(function (k) { props.deleteProperty(k); });
-  CacheService.getScriptCache().remove('authFails');
+  withLock_(function () {
+    var props = props_();
+    ['TOTP_SECRET', 'TOTP_LAST', 'TOTP_PENDING', 'TOKENS'].forEach(function (k) { props.deleteProperty(k); });
+    CacheService.getScriptCache().remove('authFails');
+  });
   Logger.log('Two-step sign-in is off and every device is signed out. Sign in with your passcode, then turn it on again in Settings.');
+}
+
+// Can't sign in because sign-ins stay paused (someone keeps sending wrong
+// passcodes)? Pick this next to Run and press Run. Within 15 minutes, type the
+// code it prints into the Scheduler's "one-time sign-in code" box, along with
+// your passcode (and two-step code). It gets you past the pause once.
+function makeOneTimeSignInCode() {
+  var code = base32Encode_(randomBytes_(10));
+  withLock_(function () {
+    props_().setProperty('RESCUE', JSON.stringify({ h: tokenHash_(code), until: Date.now() + 15 * 60000 }));
+  });
+  Logger.log('One-time sign-in code (works once, for 15 minutes): ' + code.replace(/(.{4})/g, '$1 ').trim());
 }
 
 
@@ -102,7 +129,7 @@ var BookingCore = (function () {
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
     'August', 'September', 'October', 'November', 'December'];
   var ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  var VERSION = 2;
+  var VERSION = 3;
   var MIN_PASSCODE = 10; // for new passcodes; one saved before this rule still works
   var LINK_KEEP_DAYS = 30; // a customer link stops working this long after its service day
 
@@ -331,12 +358,18 @@ var BookingCore = (function () {
     }
     if (evt.type === 'changed') {
       return { title: 'Booking changed', tag: 'arrows_counterclockwise',
-        subject: 'Changed: ' + who + ' moved to ' + short + ' (was ' + prettyDate(evt.from, 'short') + ')',
-        line: who + ' moved their day from ' + prettyDate(evt.from, 'long') + ' to ' + day + '.' };
+        subject: 'Changed: ' + who + ' moved to ' + short + ' (was ' + prettyDate(evt.from, 'short') + ')' +
+          (evt.contactChanged ? ', new contact details' : ''),
+        line: who + ' moved their day from ' + prettyDate(evt.from, 'long') + ' to ' + day + '.' +
+          (evt.contactChanged ? ' Their phone number or address also changed. Check it before you go.' : '') };
     }
     if (evt.type === 'cancelled') {
       return { title: 'Booking cancelled', tag: 'x', subject: 'Cancelled: ' + who + ' — ' + short,
         line: who + ' cancelled ' + day + '.' };
+    }
+    if (evt.type === 'updated') {
+      return { title: 'Contact details changed', tag: 'pencil2', subject: 'Details changed: ' + who + ' — ' + short,
+        line: who + ' changed their phone number or address for ' + day + '. Check it before you go.' };
     }
     return { title: 'Test alert', tag: 'white_check_mark', subject: 'Test: booking alerts are working',
       line: 'Booking alerts are set up. You’ll get one of these every time a customer books, changes, or cancels.' };
@@ -378,6 +411,7 @@ var BookingCore = (function () {
         fail('unavailable', 'Sorry — that day was just taken. Please pick another day.');
       }
       var type = !wasBooked ? 'booked' : (date !== prev ? 'changed' : 'updated');
+      var was = { phone: link.phone, address: link.address };
       link.name = name;
       if (hasInfo) {
         link.phone = clean(req.phone, 30) || link.phone;
@@ -390,7 +424,10 @@ var BookingCore = (function () {
       pushHistory(link, { at: now, type: type, date: date, from: prev, by: 'customer' });
       env.store.putLink(link);
       env.store.addActivity({ at: now, linkId: link.id, type: type, date: date, from: prev, name: name, by: 'customer' });
-      afterChange(env, { type: type, link: link, from: prev, cfg: cfg, quiet: type === 'updated' });
+      // A new phone number or address is worth an alert: it's where you'll call or drive.
+      var contactChanged = wasBooked && (link.phone !== was.phone || link.address !== was.address);
+      var quiet = type === 'updated' && !contactChanged;
+      afterChange(env, { type: type, link: link, from: prev, cfg: cfg, quiet: quiet, contactChanged: contactChanged });
       return publicLink(cfg, link, links, today);
     });
   };
@@ -424,17 +461,33 @@ var BookingCore = (function () {
     }
   }
 
-  ACTIONS['admin.load'] = function (req, env) {
-    var cfg = loadConfig(env);
-    var site = validSite(req.site);
-    if (site && site !== cfg.siteUrl) {
-      env.lock(function () {
+  // `auth.keyed`: this request carried the passcode (a sign-in, or an older
+  // Scheduler that sends it every time), not just a saved sign-in token.
+  // Alerts link to the Scheduler at this address. Only requests that carry the
+  // passcode record it (signing in, changing the passcode, alerts or two-step),
+  // so a stolen sign-in can't point your alert links at a look-alike page, and
+  // changing the passcode puts back the address you're actually using.
+  // `wait`: worth waiting for the lock (after a passcode change), not just a quick try.
+  // Never fails the request: the change that called it is already saved.
+  function rememberSite(env, site, cfg, wait) {
+    try {
+      site = validSite(site);
+      if (!site || site === loadConfig(env).siteUrl) return;
+      var done = env.lock(function () {
         var fresh = loadConfig(env);
         fresh.siteUrl = site;
         env.store.setConfig(fresh);
-      }, { optional: true });
-      cfg.siteUrl = site;
+        return true;
+      }, { optional: !wait });
+      if (done && cfg) cfg.siteUrl = site;
+    } catch (e) {
+      if (env.log) env.log(e);
     }
+  }
+
+  ACTIONS['admin.load'] = function (req, env, auth) {
+    var cfg = loadConfig(env);
+    if (auth && auth.keyed) rememberSite(env, req.site, cfg);
     var today = env.today();
     var links = env.store.listLinks().filter(function (l) { return !l.archived; });
     links.sort(function (a, b) { return a.created < b.created ? 1 : -1; });
@@ -471,7 +524,11 @@ var BookingCore = (function () {
     return out;
   }
 
-  ACTIONS['admin.saveConfig'] = function (req, env) {
+  // Where alerts go and the site address are left as they are here; they change
+  // through admin.setAlerts and a sign-in, which both need the passcode. Older
+  // Schedulers send the passcode with every save, so they can still change them.
+  var ALERT_FIELDS = ['notifyEmail', 'ntfyTopic'];
+  ACTIONS['admin.saveConfig'] = function (req, env, auth) {
     return env.lock(function () {
       var today = env.today();
       var current = loadConfig(env);
@@ -479,10 +536,36 @@ var BookingCore = (function () {
       var next = req.base && typeof req.base === 'object'
         ? normalizeConfig(mergeConfig(current, normalizeConfig(req.base, today), client), today)
         : client;
-      if (!next.siteUrl) next.siteUrl = current.siteUrl;
+      next.siteUrl = current.siteUrl;
+      if (!(auth && auth.keyed)) ALERT_FIELDS.forEach(function (k) { next[k] = current[k]; });
       env.store.setConfig(next);
       return { config: next };
     });
+  };
+
+  // Changing where booking alerts go needs the passcode (and a code, with two-step
+  // on). Otherwise someone with a stolen, signed-in phone could send every new
+  // booking's details to themselves and keep getting them after you change the passcode.
+  // Only the fields sent are changed, so a change made on another device to the other one stays.
+  ACTIONS['admin.setAlerts'] = function (req, env) {
+    var sent = function (k) { return req[k] !== undefined && req[k] !== null; };
+    var email = sent('notifyEmail') ? clean(req.notifyEmail, 120) : null;
+    var topic = sent('ntfyTopic') ? clean(req.ntfyTopic, 64) : null;
+    if (email && !validEmail(email)) fail('bad_email', 'That email address doesn\u2019t look right.');
+    if (topic && !/^[A-Za-z0-9_-]{1,64}$/.test(topic)) fail('bad_topic', 'Push topic: letters, numbers, - and _ only.');
+    var res = env.lock(function () {
+      var cfg = loadConfig(env);
+      if (email === null) email = cfg.notifyEmail;
+      if (topic === null) topic = cfg.ntfyTopic;
+      if (email === cfg.notifyEmail && topic === cfg.ntfyTopic) return { config: cfg, same: true };
+      if (env.verifyOwner) env.verifyOwner(String(req.key || ''), cleanCode(req.code), String(req.token || ''));
+      cfg.notifyEmail = validEmail(email);
+      cfg.ntfyTopic = topic;
+      env.store.setConfig(cfg);
+      return { config: cfg };
+    });
+    if (!res.same) rememberSite(env, req.site, res.config, true);
+    return { config: res.config };
   };
 
   ACTIONS['admin.createLink'] = function (req, env) {
@@ -542,11 +625,15 @@ var BookingCore = (function () {
     return { results: env.notify({ type: 'test', cfg: loadConfig(env), link: {} }) || {} };
   };
 
+  // Needs the current passcode (and a code, with two-step on), so a stolen
+  // sign-in alone can't change it. Signs out every other device; this one gets a
+  // fresh token.
   ACTIONS['admin.setPasscode'] = function (req, env) {
     var next = String(req.newKey || '');
     if (next.length < MIN_PASSCODE) fail('weak', 'Use at least ' + MIN_PASSCODE + ' characters.');
-    // Signs out every other device; this one gets a fresh token.
-    return { token: env.setPasscode(next) };
+    var token = env.setPasscode(next, String(req.token || ''), String(req.key || ''), cleanCode(req.code));
+    rememberSite(env, req.site, null, true);
+    return { token: token };
   };
 
   // The passcode is checked only here. A signed-in device keeps working with its
@@ -558,9 +645,15 @@ var BookingCore = (function () {
     if (!code && env.twoStepOn && env.twoStepOn()) {
       fail('need_code', 'Enter the 6-digit code from your authenticator app.');
     }
-    env.checkAdmin(String(req.key || ''), code);
-    var token = env.issueToken();
-    var data = ACTIONS['admin.load'](req, env);
+    var token;
+    if (env.login) {
+      // Checked and issued in one locked step, so a passcode change can't slip past it.
+      token = env.login(String(req.key || ''), code, String(req.rescue || ''));
+    } else {
+      env.checkAdmin(String(req.key || ''), code);
+      token = env.issueToken();
+    }
+    var data = ACTIONS['admin.load'](req, env, { keyed: true });
     data.token = token;
     return data;
   };
@@ -571,20 +664,23 @@ var BookingCore = (function () {
   }
 
   // Two-step sign-in: start hands this signed-in device a new secret to add to an
-  // authenticator app; confirm turns it on once a code from the app matches.
+  // authenticator app; confirm turns it on once a code from the app matches and
+  // the current passcode is given, so a stolen sign-in alone can't turn it on.
   ACTIONS['admin.twoStepStart'] = function (req, env) {
     needLive(env, 'twoStepStart');
     return env.twoStepStart();
   };
   ACTIONS['admin.twoStepConfirm'] = function (req, env) {
     needLive(env, 'twoStepConfirm');
-    env.twoStepConfirm(cleanCode(req.code), String(req.token || ''));
+    env.twoStepConfirm(cleanCode(req.code), String(req.token || ''), String(req.key || ''));
+    rememberSite(env, req.site, null, true);
     return { twoStep: true };
   };
-  // Turning it off takes a current code, so a stolen sign-in alone can't do it.
+  // Turning it off takes the passcode and a current code, so neither a stolen
+  // sign-in nor the phone with the authenticator app is enough on its own.
   ACTIONS['admin.twoStepOff'] = function (req, env) {
     needLive(env, 'twoStepOff');
-    env.twoStepOff(cleanCode(req.code));
+    if (env.twoStepOff(cleanCode(req.code), String(req.token || ''), String(req.key || ''))) rememberSite(env, req.site, null, true);
     return { twoStep: false };
   };
 
@@ -598,6 +694,7 @@ var BookingCore = (function () {
     var action = String(req.action || '');
     try {
       if (!ACTIONS[action]) fail('bad_action', 'Unknown request.');
+      var auth = { keyed: false };
       if (action.indexOf('admin.') === 0 && action !== 'admin.login') {
         if (req.token || req.key === undefined) {
           if (!env.checkToken(String(req.token || ''))) fail('signed_out', 'Please enter your passcode again.');
@@ -606,10 +703,12 @@ var BookingCore = (function () {
           // request. Same check and lockout as signing in. They can't send a
           // code, so this way in is closed once two-step sign-in is on.
           if (env.twoStepOn && env.twoStepOn()) fail('signed_out', 'Please reopen the Scheduler and sign in again.');
-          env.checkAdmin(String(req.key || ''));
+          // keepFails: their polls must not undo a pause someone else's wrong guesses caused.
+          env.checkAdmin(String(req.key || ''), '', { keepFails: true });
+          auth.keyed = true;
         }
       }
-      var data = ACTIONS[action](req, env) || {};
+      var data = ACTIONS[action](req, env, auth) || {};
       data.ok = true;
       return data;
     } catch (e) {
@@ -692,6 +791,8 @@ function storedPasscode_() {
   if (p && p.length >= 6) return p;
   if (ADMIN_PASSCODE !== 'CHANGE-ME' && String(ADMIN_PASSCODE).length >= BookingCore.minPasscode) {
     props.setProperty('ADMIN_PASSCODE', String(ADMIN_PASSCODE));
+    // Same record setup() keeps, so running setup later won't undo a passcode changed in the app.
+    props.setProperty('FILE_PASS_HASH', tokenHash_(String(ADMIN_PASSCODE)));
     return String(ADMIN_PASSCODE);
   }
   return '';
@@ -726,6 +827,96 @@ var TOKEN_DAYS_ = 90;
 function tokenFresh_(t) { return Date.now() - Date.parse(t.at) < TOKEN_DAYS_ * 86400000; }
 function writeTokens_(list) { props_().setProperty('TOKENS', JSON.stringify(list.filter(tokenFresh_).slice(-25))); }
 function newToken_() { return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ''); }
+function addToken_() {
+  var token = newToken_();
+  writeTokens_(readTokens_().concat([{ h: tokenHash_(token), at: new Date().toISOString() }]));
+  return token;
+}
+function tokenValid_(token) {
+  token = String(token || '');
+  if (!/^[0-9a-f]{64}$/.test(token)) return false;
+  var h = tokenHash_(token);
+  return readTokens_().some(function (t) { return t.h === h && tokenFresh_(t); });
+}
+
+// ---- Sign-in checks ----
+// Every check that leads to a write (a new sign-in, a passcode change, two-step
+// on or off) runs inside the same script-lock section as that write, so a request
+// already in flight can't slip past a passcode change.
+
+var LOCKED_MSG_ = 'Too many wrong passcodes. Wait 15 minutes and try again.';
+var NOT_SETUP_MSG_ = 'Setup isn\u2019t finished. In Apps Script, set ADMIN_PASSCODE at the top of the code ' +
+  '(10+ characters), save, then pick \u201csetup\u201d next to Run and press Run.';
+
+// Checks the passcode, and the two-step code when it's on. Call inside withLock_.
+// Returns 'ok', 'locked', 'not_setup', 'wrong' or 'wrong2'; wrong tries count
+// toward the pause. opts.keepFails: success doesn't reset the count.
+// opts.rescue: a one-time sign-in code got this check past a pause.
+// opts.local: the caller keeps its own count; the shared pause isn't read or changed.
+function verifyFactors_(key, code, opts) {
+  opts = opts || {};
+  var props = props_(), cache = CacheService.getScriptCache();
+  var stored = storedPasscode_();
+  if (!stored) return 'not_setup';
+  var fails = opts.local ? 0 : +(cache.get('authFails') || 0);
+  if (fails >= 10 && !opts.rescue) return 'locked';
+  var secret = props.getProperty('TOTP_SECRET');
+  var step = secret ? totpMatch_(secret, String(code || ''), totpLast_()) : 0;
+  if (String(key) === stored && step >= 0) {
+    if (fails && !opts.keepFails) cache.remove('authFails');
+    if (secret) props.setProperty('TOTP_LAST', String(step)); // each code works once
+    return 'ok';
+  }
+  if (!opts.local) cache.put('authFails', String(fails + 1), 900);
+  return secret ? 'wrong2' : 'wrong';
+}
+function failFactors_(result, lockedMsg) {
+  if (result === 'ok') return;
+  if (result === 'not_setup') BookingCore.fail('not_setup', NOT_SETUP_MSG_);
+  if (result === 'locked') BookingCore.fail('locked', lockedMsg || LOCKED_MSG_);
+  if (result === 'wrong2') BookingCore.fail('bad_key', 'That passcode or code is not right.');
+  BookingCore.fail('bad_key', 'That passcode is not right.');
+}
+// Changes (passcode, where alerts go, two-step on or off) need the passcode, and
+// the code with two-step on. From a signed-in device they have their own limit:
+// 5 wrong passcodes sign that device out. The sign-in pause doesn't apply to
+// them, so a stranger who keeps sign-ins paused can't stop you making changes
+// from your phone, and a stolen sign-in gets 5 guesses before it stops working.
+// Call inside withLock_.
+var CHANGE_TRIES_ = 5;
+var CHANGE_LOCKED_MSG_ = 'Too many wrong passcodes, so this is paused for 15 minutes. If it keeps happening, ' +
+  'someone may be doing it on purpose: on a computer, open Apps Script, type a new passcode at the top of the code, ' +
+  'save, pick setup next to Run and press Run. That changes the passcode and signs out every device.';
+function verifyChange_(key, code, token) {
+  // A Scheduler from before these checks sends no passcode: say so, and don't count it as a wrong try.
+  if (!key) BookingCore.fail('outdated_app', 'This Scheduler is out of date. Close it and open it again, then try again.');
+  // Older Schedulers that send the passcode with every request have no sign-in to count against.
+  if (!token) return failFactors_(verifyFactors_(key, code), CHANGE_LOCKED_MSG_);
+  var h = tokenHash_(token), list = readTokens_();
+  var me = list.filter(function (t) { return t.h === h && tokenFresh_(t); })[0];
+  if (!me) BookingCore.fail('signed_out', 'Please enter your passcode again.');
+  var result = verifyFactors_(key, code, { local: true });
+  if (result === 'ok') {
+    if (me.f) { delete me.f; writeTokens_(list); }
+    return;
+  }
+  if (result === 'not_setup') failFactors_(result);
+  me.f = (me.f || 0) + 1;
+  if (me.f >= CHANGE_TRIES_) {
+    writeTokens_(list.filter(function (t) { return t !== me; }));
+    BookingCore.fail('signed_out', 'Too many wrong passcodes on this device, so it has been signed out. Sign in again.');
+  }
+  writeTokens_(list);
+  failFactors_(result);
+}
+function pausedFast_() { return +(CacheService.getScriptCache().get('authFails') || 0) >= 10; }
+function rescueValid_(rescue) {
+  rescue = String(rescue || '').replace(/\s+/g, '').toUpperCase();
+  if (!rescue) return false;
+  var r = null;
+  try { r = JSON.parse(props_().getProperty('RESCUE') || 'null'); } catch (e) { return false; }
+  return !!r && Date.now() < r.until && r.h === tokenHash_(rescue);
+}
 
 function gasEnv_() {
   return {
@@ -736,51 +927,47 @@ function gasEnv_() {
     lock: function (fn, opts) { return withLock_(fn, !!(opts && opts.optional)); },
     // Ten wrong passcodes pause every sign-in for 15 minutes, the right passcode
     // included, so nobody can keep guessing at full speed. Devices already
-    // signed in keep working. Running setup() in the editor lifts the pause.
-    checkAdmin: function (key, code) {
-      var stored = storedPasscode_();
-      if (!stored) {
-        BookingCore.fail('not_setup', 'Setup isn\u2019t finished. In Apps Script, set ADMIN_PASSCODE at the top of the code ' +
-          '(10+ characters), save, then pick \u201csetup\u201d next to Run and press Run.');
-      }
-      var cache = CacheService.getScriptCache();
-      var locked = 'Too many wrong passcodes. Wait 15 minutes and try again.';
-      if (+(cache.get('authFails') || 0) >= 10) BookingCore.fail('locked', locked);
-      // Counted under the script lock so a burst of parallel guesses can't slip past the limit.
-      var result = withLock_(function () {
-        var props = props_();
-        var fails = +(cache.get('authFails') || 0);
-        if (fails >= 10) return 'locked';
-        var secret = props.getProperty('TOTP_SECRET');
-        var step = secret ? totpMatch_(secret, String(code || ''), totpLast_()) : 0;
-        if (key === stored && step >= 0) {
-          if (fails) cache.remove('authFails');
-          if (secret) props.setProperty('TOTP_LAST', String(step)); // each code works once
-          return 'ok';
+    // signed in keep working. setup() or makeOneTimeSignInCode() gets you past it.
+    checkAdmin: function (key, code, opts) {
+      if (!storedPasscode_()) failFactors_('not_setup');
+      if (pausedFast_()) failFactors_('locked');
+      failFactors_(withLock_(function () { return verifyFactors_(key, code, opts); }));
+    },
+    login: function (key, code, rescue) {
+      if (!storedPasscode_()) failFactors_('not_setup');
+      if (pausedFast_() && !rescue) failFactors_('locked');
+      return withLock_(function () {
+        var useRescue = rescueValid_(rescue);
+        if (rescue && !useRescue && pausedFast_()) {
+          BookingCore.fail('bad_rescue', 'That one-time sign-in code isn\u2019t right, or it was used or is over 15 minutes old. ' +
+            'Make a new one in Apps Script.');
         }
-        cache.put('authFails', String(fails + 1), 900);
-        return secret ? 'wrong2' : 'wrong';
+        failFactors_(verifyFactors_(key, code, { rescue: useRescue }));
+        if (useRescue) props_().deleteProperty('RESCUE'); // works once
+        return addToken_();
       });
-      if (result === 'locked') BookingCore.fail('locked', locked);
-      if (result === 'wrong2') BookingCore.fail('bad_key', 'That passcode or code is not right.');
-      if (result !== 'ok') BookingCore.fail('bad_key', 'That passcode is not right.');
     },
     twoStepOn: function () { return !!props_().getProperty('TOTP_SECRET'); },
     twoStepStart: function () {
-      var props = props_();
-      if (props.getProperty('TOTP_SECRET')) {
-        BookingCore.fail('two_step_on', 'Two-step sign-in is already on. Turn it off first to move it to another app.');
-      }
-      var secret = base32Encode_(randomBytes_(20));
-      props.setProperty('TOTP_PENDING', secret);
-      var name = encodeURIComponent('Splash Scheduler');
-      return { secret: secret, uri: 'otpauth://totp/' + name + '?secret=' + secret + '&issuer=' + name + '&algorithm=SHA1&digits=6&period=30' };
+      return withLock_(function () {
+        var props = props_();
+        if (props.getProperty('TOTP_SECRET')) {
+          BookingCore.fail('two_step_on', 'Two-step sign-in is already on. Turn it off first to move it to another app.');
+        }
+        var secret = base32Encode_(randomBytes_(20));
+        props.setProperty('TOTP_PENDING', secret);
+        var name = encodeURIComponent('Splash Scheduler');
+        return { secret: secret, uri: 'otpauth://totp/' + name + '?secret=' + secret + '&issuer=' + name + '&algorithm=SHA1&digits=6&period=30' };
+      });
     },
-    twoStepConfirm: function (code, token) {
+    twoStepConfirm: function (code, token, key) {
       withLock_(function () {
         var props = props_();
+        if (token && !tokenValid_(token)) BookingCore.fail('signed_out', 'Please enter your passcode again.');
+        if (props.getProperty('TOTP_SECRET')) BookingCore.fail('two_step_on', 'Two-step sign-in is already on.');
         var pending = props.getProperty('TOTP_PENDING');
         if (!pending) BookingCore.fail('two_step_expired', 'Start again: tap Turn on.');
+        verifyChange_(key, '', token);
         var step = totpMatch_(pending, code, -1);
         if (step < 0) BookingCore.fail('bad_code', 'That code doesn\u2019t match. Type the newest code the app shows.');
         props.setProperty('TOTP_SECRET', pending);
@@ -791,48 +978,38 @@ function gasEnv_() {
         writeTokens_(readTokens_().filter(function (t) { return t.h === h; }));
       });
     },
-    twoStepOff: function (code) {
-      var cache = CacheService.getScriptCache();
-      var result = withLock_(function () {
+    // Needs the passcode and a current code. When it's already off this does
+    // nothing, so it can't be used to lift a pause or to test passcodes.
+    // Returns true once it has turned it off.
+    twoStepOff: function (code, token, key) {
+      return withLock_(function () {
+        if (token && !tokenValid_(token)) BookingCore.fail('signed_out', 'Please enter your passcode again.');
         var props = props_();
-        var fails = +(cache.get('authFails') || 0);
-        if (fails >= 10) return 'locked';
-        var secret = props.getProperty('TOTP_SECRET');
-        if (secret && totpMatch_(secret, code, totpLast_()) < 0) {
-          cache.put('authFails', String(fails + 1), 900);
-          return 'wrong';
-        }
+        if (!props.getProperty('TOTP_SECRET')) return false;
+        verifyChange_(key, code, token);
         ['TOTP_SECRET', 'TOTP_LAST', 'TOTP_PENDING'].forEach(function (k) { props.deleteProperty(k); });
-        if (fails) cache.remove('authFails');
-        return 'ok';
+        return true;
       });
-      if (result === 'locked') BookingCore.fail('locked', 'Too many wrong passcodes. Wait 15 minutes and try again.');
-      if (result === 'wrong') BookingCore.fail('bad_code', 'That code doesn\u2019t match. Type the newest code the app shows.');
     },
-    checkToken: function (token) {
-      if (!/^[0-9a-f]{64}$/.test(token)) return false;
-      var h = tokenHash_(token);
-      return readTokens_().some(function (t) { return t.h === h && tokenFresh_(t); });
+    // For changes a stolen sign-in mustn't make. Called inside env.lock.
+    verifyOwner: function (key, code, token) {
+      if (token && !tokenValid_(token)) BookingCore.fail('signed_out', 'Please enter your passcode again.');
+      verifyChange_(key, code, token);
     },
-    issueToken: function () {
-      var token = newToken_();
-      withLock_(function () {
-        writeTokens_(readTokens_().concat([{ h: tokenHash_(token), at: new Date().toISOString() }]));
-      });
-      return token;
-    },
+    checkToken: tokenValid_,
     revokeToken: function (token) {
       if (!token) return;
       var h = tokenHash_(token);
       withLock_(function () { writeTokens_(readTokens_().filter(function (t) { return t.h !== h; })); });
     },
-    setPasscode: function (next) {
-      var token = newToken_();
-      withLock_(function () {
+    setPasscode: function (next, token, key, code) {
+      return withLock_(function () {
+        if (token && !tokenValid_(token)) BookingCore.fail('signed_out', 'Please enter your passcode again.');
+        verifyChange_(key, code, token);
         props_().setProperty('ADMIN_PASSCODE', next);
-        writeTokens_([{ h: tokenHash_(token), at: new Date().toISOString() }]);
+        writeTokens_([]);
+        return addToken_();
       });
-      return token;
     },
     notify: gasNotify_,
     account: function () { return Session.getEffectiveUser().getEmail(); },
