@@ -393,7 +393,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 }
 
 /* ---------- Lock ---------- */
-.lock { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: radial-gradient(600px 400px at 50% 0%, #0d2c5c, var(--bg) 70%); }
+.lock { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; place-items: safe center; padding: 24px; overflow-y: auto; overscroll-behavior: contain; background: radial-gradient(600px 400px at 50% 0%, #0d2c5c, var(--bg) 70%); }
 .lock-card { width: 100%; max-width: 360px; text-align: center; animation: tabIn .5s var(--ease) both; }
 .lock-logo { border-radius: 50%; box-shadow: 0 0 0 1px rgba(255, 255, 255, .12), 0 10px 40px -8px rgba(34, 195, 238, .8); }
 .lock h1 { margin: 16px 0 6px; font-size: 26px; letter-spacing: -.02em; }

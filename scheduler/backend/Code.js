@@ -57,17 +57,23 @@ function setup() {
   if (fromCode && fromCode.length < min) {
     throw new Error('ADMIN_PASSCODE needs at least ' + min + ' characters. Change it, save, then run setup again.');
   }
-  withLock_(function () {
+  var said = withLock_(function () {
     var stored = props.getProperty('ADMIN_PASSCODE');
     if (!stored && !fromCode) {
       throw new Error('First change ADMIN_PASSCODE at the top of this file (' + min + '+ characters), save, then run setup again.');
     }
     var fileHash = fromCode ? tokenHash_(fromCode) : '';
+    var out = 'Passcode: unchanged.';
     if (fromCode && fromCode !== stored && fileHash !== props.getProperty('FILE_PASS_HASH')) {
       props.setProperty('ADMIN_PASSCODE', fromCode);
       props.deleteProperty('TOKENS'); // a new passcode signs out every device
+      out = stored ? 'Passcode: saved the new one from the top of this file. Every device is signed out.'
+        : 'Passcode: saved.';
+    } else if (fromCode && fromCode !== stored) {
+      out = 'Passcode: kept the one you set in the app. To replace it, type a different one at the top of this file, save, and run setup again.';
     }
     if (fromCode) props.setProperty('FILE_PASS_HASH', fileHash);
+    return out;
   });
 
   var ss = spreadsheet_();
@@ -82,6 +88,7 @@ function setup() {
   MailApp.getRemainingDailyQuota();
   CacheService.getScriptCache().remove('authFails');
 
+  Logger.log(said);
   Logger.log('Setup complete. Bookings sheet: ' + ss.getUrl());
   Logger.log('Next: Deploy -> New deployment -> Web app (Execute as: Me, Who has access: Anyone).');
 }
@@ -122,7 +129,7 @@ var BookingCore = (function () {
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
     'August', 'September', 'October', 'November', 'December'];
   var ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  var VERSION = 2;
+  var VERSION = 3;
   var MIN_PASSCODE = 10; // for new passcodes; one saved before this rule still works
   var LINK_KEEP_DAYS = 30; // a customer link stops working this long after its service day
 
@@ -444,9 +451,13 @@ var BookingCore = (function () {
     }
   }
 
-  ACTIONS['admin.load'] = function (req, env) {
+  // `auth.keyed`: this request carried the passcode (a sign-in, or an older
+  // Scheduler that sends it every time), not just a saved sign-in token.
+  ACTIONS['admin.load'] = function (req, env, auth) {
     var cfg = loadConfig(env);
-    var site = validSite(req.site);
+    // Alerts link to this address. Only a request with the passcode can change it,
+    // so a stolen sign-in can't point your alert links at a look-alike page.
+    var site = auth && auth.keyed ? validSite(req.site) : '';
     if (site && site !== cfg.siteUrl) {
       env.lock(function () {
         var fresh = loadConfig(env);
@@ -491,7 +502,11 @@ var BookingCore = (function () {
     return out;
   }
 
-  ACTIONS['admin.saveConfig'] = function (req, env) {
+  // Where alerts go and the site address are left as they are here; they change
+  // through admin.setAlerts and a sign-in, which both need the passcode. Older
+  // Schedulers send the passcode with every save, so they can still change them.
+  var ALERT_FIELDS = ['notifyEmail', 'ntfyTopic'];
+  ACTIONS['admin.saveConfig'] = function (req, env, auth) {
     return env.lock(function () {
       var today = env.today();
       var current = loadConfig(env);
@@ -499,9 +514,28 @@ var BookingCore = (function () {
       var next = req.base && typeof req.base === 'object'
         ? normalizeConfig(mergeConfig(current, normalizeConfig(req.base, today), client), today)
         : client;
-      if (!next.siteUrl) next.siteUrl = current.siteUrl;
+      next.siteUrl = current.siteUrl;
+      if (!(auth && auth.keyed)) ALERT_FIELDS.forEach(function (k) { next[k] = current[k]; });
       env.store.setConfig(next);
       return { config: next };
+    });
+  };
+
+  // Changing where booking alerts go needs the passcode (and a code, with two-step
+  // on). Otherwise someone with a stolen, signed-in phone could send every new
+  // booking's details to themselves and keep getting them after you change the passcode.
+  ACTIONS['admin.setAlerts'] = function (req, env) {
+    var email = clean(req.notifyEmail, 120), topic = clean(req.ntfyTopic, 64);
+    if (email && !validEmail(email)) fail('bad_email', 'That email address doesn\u2019t look right.');
+    if (topic && !/^[A-Za-z0-9_-]{1,64}$/.test(topic)) fail('bad_topic', 'Push topic: letters, numbers, - and _ only.');
+    return env.lock(function () {
+      var cfg = loadConfig(env);
+      if (email === cfg.notifyEmail && topic === cfg.ntfyTopic) return { config: cfg };
+      if (env.verifyOwner) env.verifyOwner(String(req.key || ''), cleanCode(req.code), String(req.token || ''));
+      cfg.notifyEmail = validEmail(email);
+      cfg.ntfyTopic = topic;
+      env.store.setConfig(cfg);
+      return { config: cfg };
     });
   };
 
@@ -588,7 +622,7 @@ var BookingCore = (function () {
       env.checkAdmin(String(req.key || ''), code);
       token = env.issueToken();
     }
-    var data = ACTIONS['admin.load'](req, env);
+    var data = ACTIONS['admin.load'](req, env, { keyed: true });
     data.token = token;
     return data;
   };
@@ -610,10 +644,11 @@ var BookingCore = (function () {
     env.twoStepConfirm(cleanCode(req.code), String(req.token || ''), String(req.key || ''));
     return { twoStep: true };
   };
-  // Turning it off takes a current code, so a stolen sign-in alone can't do it.
+  // Turning it off takes the passcode and a current code, so neither a stolen
+  // sign-in nor the phone with the authenticator app is enough on its own.
   ACTIONS['admin.twoStepOff'] = function (req, env) {
     needLive(env, 'twoStepOff');
-    env.twoStepOff(cleanCode(req.code), String(req.token || ''));
+    env.twoStepOff(cleanCode(req.code), String(req.token || ''), String(req.key || ''));
     return { twoStep: false };
   };
 
@@ -627,6 +662,7 @@ var BookingCore = (function () {
     var action = String(req.action || '');
     try {
       if (!ACTIONS[action]) fail('bad_action', 'Unknown request.');
+      var auth = { keyed: false };
       if (action.indexOf('admin.') === 0 && action !== 'admin.login') {
         if (req.token || req.key === undefined) {
           if (!env.checkToken(String(req.token || ''))) fail('signed_out', 'Please enter your passcode again.');
@@ -637,9 +673,10 @@ var BookingCore = (function () {
           if (env.twoStepOn && env.twoStepOn()) fail('signed_out', 'Please reopen the Scheduler and sign in again.');
           // keepFails: their polls must not undo a pause someone else's wrong guesses caused.
           env.checkAdmin(String(req.key || ''), '', { keepFails: true });
+          auth.keyed = true;
         }
       }
-      var data = ACTIONS[action](req, env) || {};
+      var data = ACTIONS[action](req, env, auth) || {};
       data.ok = true;
       return data;
     } catch (e) {
@@ -722,6 +759,8 @@ function storedPasscode_() {
   if (p && p.length >= 6) return p;
   if (ADMIN_PASSCODE !== 'CHANGE-ME' && String(ADMIN_PASSCODE).length >= BookingCore.minPasscode) {
     props.setProperty('ADMIN_PASSCODE', String(ADMIN_PASSCODE));
+    // Same record setup() keeps, so running setup later won't undo a passcode changed in the app.
+    props.setProperty('FILE_PASS_HASH', tokenHash_(String(ADMIN_PASSCODE)));
     return String(ADMIN_PASSCODE);
   }
   return '';
@@ -834,6 +873,10 @@ function gasEnv_() {
       if (pausedFast_() && !rescue) failFactors_('locked');
       return withLock_(function () {
         var useRescue = rescueValid_(rescue);
+        if (rescue && !useRescue && pausedFast_()) {
+          BookingCore.fail('bad_rescue', 'That one-time sign-in code isn\u2019t right, or it was used or is over 15 minutes old. ' +
+            'Make a new one in Apps Script.');
+        }
         failFactors_(verifyFactors_(key, code, { rescue: useRescue }));
         if (useRescue) props_().deleteProperty('RESCUE'); // works once
         return addToken_();
@@ -870,25 +913,21 @@ function gasEnv_() {
         writeTokens_(readTokens_().filter(function (t) { return t.h === h; }));
       });
     },
-    twoStepOff: function (code, token) {
-      var cache = CacheService.getScriptCache();
-      var result = withLock_(function () {
-        if (token && !tokenValid_(token)) return 'signed_out';
+    // Needs the passcode and a current code. When it's already off this does
+    // nothing, so it can't be used to lift a pause or to test passcodes.
+    twoStepOff: function (code, token, key) {
+      withLock_(function () {
+        if (token && !tokenValid_(token)) BookingCore.fail('signed_out', 'Please enter your passcode again.');
         var props = props_();
-        var fails = +(cache.get('authFails') || 0);
-        if (fails >= 10) return 'locked';
-        var secret = props.getProperty('TOTP_SECRET');
-        if (secret && totpMatch_(secret, code, totpLast_()) < 0) {
-          cache.put('authFails', String(fails + 1), 900);
-          return 'wrong';
-        }
+        if (!props.getProperty('TOTP_SECRET')) return;
+        failFactors_(verifyFactors_(key, code));
         ['TOTP_SECRET', 'TOTP_LAST', 'TOTP_PENDING'].forEach(function (k) { props.deleteProperty(k); });
-        if (fails) cache.remove('authFails');
-        return 'ok';
       });
-      if (result === 'signed_out') BookingCore.fail('signed_out', 'Please enter your passcode again.');
-      if (result === 'locked') BookingCore.fail('locked', LOCKED_MSG_);
-      if (result === 'wrong') BookingCore.fail('bad_code', 'That code doesn\u2019t match. Type the newest code the app shows.');
+    },
+    // For changes a stolen sign-in mustn't make. Called inside env.lock.
+    verifyOwner: function (key, code, token) {
+      if (token && !tokenValid_(token)) BookingCore.fail('signed_out', 'Please enter your passcode again.');
+      failFactors_(verifyFactors_(key, code));
     },
     checkToken: tokenValid_,
     revokeToken: function (token) {
