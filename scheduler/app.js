@@ -11,6 +11,11 @@
     get: function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
     set: function (k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
+  // Some browsers block site storage. Then nothing can be kept between page loads,
+  // so the tab-to-tab sign-in sync below stays off.
+  var storageOk = (function () {
+    try { localStorage.setItem('scheduler.probe', '1'); localStorage.removeItem('scheduler.probe'); return true; } catch (e) { return false; }
+  })();
   var KEY_AUTH = 'scheduler.auth';
   var KEY_SEEN = 'scheduler.seenAt';
   var KEY_TAB = 'scheduler.tab';
@@ -31,13 +36,17 @@
   // lock is dropped (its promise never settles), so nothing from the old session
   // is drawn into the page; signing in again reloads the page for a clean start.
   var epoch = 0;
-  var shownData = false; // this page has shown data since it loaded
+  var inFlight = 0;
+  var stale = false; // this page has shown data, or had a request cut off by a lock
   function call(action, payload) {
     var at = epoch;
     var drop = function () { return new Promise(function () {}); };
+    inFlight++;
     return Api.call(action, payload).then(function (res) {
+      inFlight--;
       return at === epoch ? res : drop();
     }, function (err) {
+      inFlight--;
       if (at !== epoch) return drop();
       throw err;
     });
@@ -254,7 +263,7 @@
       store.set(KEY_SEEN, S.seenAt);
     }
     S.loaded = true;
-    shownData = true;
+    stale = true;
     renderAll();
     if ($('tab-bookings').classList.contains('active')) markSeenSoon();
   }
@@ -1027,11 +1036,14 @@
     });
   }
   function saveAlerts() {
-    var now = readForm();
+    var now = readForm(), was = S.filled || {};
+    var req = { token: S.token, site: siteUrl() };
+    ALERT_FIELDS.forEach(function (k) { if (now[k] !== was[k]) req[k] = now[k]; });
     return askOwner('Where alerts go', 'Booking alerts include customer names, phone numbers and addresses, ' +
       'so changing where they go needs your passcode.', 'Save').then(function (creds) {
-      return call('admin.setAlerts', { token: S.token, key: creds.key, code: creds.code,
-        notifyEmail: now.notifyEmail, ntfyTopic: now.ntfyTopic });
+      req.key = creds.key;
+      req.code = creds.code;
+      return call('admin.setAlerts', req);
     }).then(function (res) {
       S.mutSeq++;
       ALERT_FIELDS.forEach(function (k) {
@@ -1142,7 +1154,8 @@
     showLock();
     // Reload once the server has ended this sign-in, so nothing from the session
     // is left anywhere in the page. Other tabs lock themselves (see syncAuth).
-    call('admin.logout', { token: token }).then(function () { location.reload(); }, function () {
+    call('admin.logout', { token: token }).then(function () { location.reload(); }, function (err) {
+      if (err.code !== 'network') { location.reload(); return; } // e.g. that sign-in had already ended
       $('lockErr').textContent = 'Locked on this device, but the server couldn\u2019t be reached to end the sign-in. ' +
         'If someone could have copied it, change your passcode.';
     });
@@ -1169,7 +1182,7 @@
           if (a.length < Core.minPasscode) { toast('Use at least ' + Core.minPasscode + ' characters.'); return; }
           if (a !== b) { toast('Those don’t match.'); return; }
           busy(save, true);
-          call('admin.setPasscode', { token: S.token, key: cur.value, code: code, newKey: a }).then(function (res) {
+          call('admin.setPasscode', { token: S.token, key: cur.value, code: code, newKey: a, site: siteUrl() }).then(function (res) {
             S.token = res.token;
             saveAuth(res.token);
             closeSheet();
@@ -1274,7 +1287,7 @@
             if (!pass.value) { toast('Type your passcode.'); return; }
             if (!/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
             busy(confirm, true);
-            call('admin.twoStepConfirm', { token: S.token, key: pass.value, code: code }).then(function () {
+            call('admin.twoStepConfirm', { token: S.token, key: pass.value, code: code, site: siteUrl() }).then(function () {
               S.twoStep = true;
               renderTwoStep();
               closeSheet();
@@ -1308,7 +1321,7 @@
           if (!pass.value) { toast('Type your passcode.'); return; }
           if (!/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
           busy(off, true);
-          call('admin.twoStepOff', { token: S.token, key: pass.value, code: code }).then(function () {
+          call('admin.twoStepOff', { token: S.token, key: pass.value, code: code, site: siteUrl() }).then(function () {
             S.twoStep = false;
             renderTwoStep();
             closeSheet();
@@ -1333,7 +1346,7 @@
     S.loaded = false;
     S.settingsDirty = false;
     ['upcoming', 'past', 'activity', 'linkList'].forEach(function (id) { $(id).innerHTML = ''; });
-    ['sEmail', 'sNtfy', 'sOwner', 'sPhone'].forEach(function (id) { $(id).value = ''; });
+    ['sEmail', 'sNtfy', 'sOwner', 'sPhone', 'lnCustomer', 'lnService'].forEach(function (id) { $(id).value = ''; });
     closeSheet();
   }
   function shellInert(on) {
@@ -1343,7 +1356,9 @@
   }
   function showLock(message) {
     epoch++;
+    if (inFlight) stale = true; // their replies will be dropped
     clearTimeout(S.saveTimer);
+    $('refreshBtn').classList.remove('spin');
     wipeData();
     shellInert(true);
     $('toast').classList.remove('show');
@@ -1386,7 +1401,7 @@
       S.token = data.token;
       saveAuth(data.token);
       // The app was open earlier in this page: start clean rather than pick up its old state.
-      if (shownData) { location.reload(); return; }
+      if (stale && storageOk) { location.reload(); return; }
       busy(btn, false);
       shellInert(false);
       $('lock').hidden = true;
@@ -1457,7 +1472,7 @@
   // Locking or signing in in another tab (or the installed app) of this browser
   // applies here too. A passcode change there signs this tab in with its new token.
   function syncAuth() {
-    if (Api.mode !== 'live') return;
+    if (Api.mode !== 'live' || !storageOk) return;
     var t = readAuth();
     if (t === S.token) return;
     if (!t) { S.token = ''; showLock(); return; }

@@ -365,6 +365,10 @@ var BookingCore = (function () {
       return { title: 'Booking cancelled', tag: 'x', subject: 'Cancelled: ' + who + ' — ' + short,
         line: who + ' cancelled ' + day + '.' };
     }
+    if (evt.type === 'updated') {
+      return { title: 'Contact details changed', tag: 'pencil2', subject: 'Details changed: ' + who + ' — ' + short,
+        line: who + ' changed their phone number or address for ' + day + '. Check it before you go.' };
+    }
     return { title: 'Test alert', tag: 'white_check_mark', subject: 'Test: booking alerts are working',
       line: 'Booking alerts are set up. You’ll get one of these every time a customer books, changes, or cancels.' };
   }
@@ -405,6 +409,7 @@ var BookingCore = (function () {
         fail('unavailable', 'Sorry — that day was just taken. Please pick another day.');
       }
       var type = !wasBooked ? 'booked' : (date !== prev ? 'changed' : 'updated');
+      var was = { phone: link.phone, address: link.address };
       link.name = name;
       if (hasInfo) {
         link.phone = clean(req.phone, 30) || link.phone;
@@ -417,7 +422,9 @@ var BookingCore = (function () {
       pushHistory(link, { at: now, type: type, date: date, from: prev, by: 'customer' });
       env.store.putLink(link);
       env.store.addActivity({ at: now, linkId: link.id, type: type, date: date, from: prev, name: name, by: 'customer' });
-      afterChange(env, { type: type, link: link, from: prev, cfg: cfg, quiet: type === 'updated' });
+      // A new phone number or address is worth an alert: it's where you'll call or drive.
+      var quiet = type === 'updated' && link.phone === was.phone && link.address === was.address;
+      afterChange(env, { type: type, link: link, from: prev, cfg: cfg, quiet: quiet });
       return publicLink(cfg, link, links, today);
     });
   };
@@ -453,19 +460,27 @@ var BookingCore = (function () {
 
   // `auth.keyed`: this request carried the passcode (a sign-in, or an older
   // Scheduler that sends it every time), not just a saved sign-in token.
-  ACTIONS['admin.load'] = function (req, env, auth) {
-    var cfg = loadConfig(env);
-    // Alerts link to this address. Only a request with the passcode can change it,
-    // so a stolen sign-in can't point your alert links at a look-alike page.
-    var site = auth && auth.keyed ? validSite(req.site) : '';
-    if (site && site !== cfg.siteUrl) {
+  // Alerts link to the Scheduler at this address. Only requests that carry the
+  // passcode record it (signing in, changing the passcode, alerts or two-step),
+  // so a stolen sign-in can't point your alert links at a look-alike page, and
+  // changing the passcode puts back the address you're actually using.
+  // `wait`: worth waiting for the lock (after a passcode change), not just a quick try.
+  function rememberSite(env, site, cfg, wait) {
+    site = validSite(site);
+    if (!site || site === loadConfig(env).siteUrl) return;
+    try {
       env.lock(function () {
         var fresh = loadConfig(env);
         fresh.siteUrl = site;
         env.store.setConfig(fresh);
-      }, { optional: true });
-      cfg.siteUrl = site;
-    }
+      }, { optional: !wait });
+    } catch (e) { return; } // the change itself is already saved
+    if (cfg) cfg.siteUrl = site;
+  }
+
+  ACTIONS['admin.load'] = function (req, env, auth) {
+    var cfg = loadConfig(env);
+    if (auth && auth.keyed) rememberSite(env, req.site, cfg);
     var today = env.today();
     var links = env.store.listLinks().filter(function (l) { return !l.archived; });
     links.sort(function (a, b) { return a.created < b.created ? 1 : -1; });
@@ -524,19 +539,26 @@ var BookingCore = (function () {
   // Changing where booking alerts go needs the passcode (and a code, with two-step
   // on). Otherwise someone with a stolen, signed-in phone could send every new
   // booking's details to themselves and keep getting them after you change the passcode.
+  // Only the fields sent are changed, so a change made on another device to the other one stays.
   ACTIONS['admin.setAlerts'] = function (req, env) {
-    var email = clean(req.notifyEmail, 120), topic = clean(req.ntfyTopic, 64);
+    var sent = function (k) { return req[k] !== undefined && req[k] !== null; };
+    var email = sent('notifyEmail') ? clean(req.notifyEmail, 120) : null;
+    var topic = sent('ntfyTopic') ? clean(req.ntfyTopic, 64) : null;
     if (email && !validEmail(email)) fail('bad_email', 'That email address doesn\u2019t look right.');
     if (topic && !/^[A-Za-z0-9_-]{1,64}$/.test(topic)) fail('bad_topic', 'Push topic: letters, numbers, - and _ only.');
-    return env.lock(function () {
+    var res = env.lock(function () {
       var cfg = loadConfig(env);
-      if (email === cfg.notifyEmail && topic === cfg.ntfyTopic) return { config: cfg };
+      if (email === null) email = cfg.notifyEmail;
+      if (topic === null) topic = cfg.ntfyTopic;
+      if (email === cfg.notifyEmail && topic === cfg.ntfyTopic) return { config: cfg, same: true };
       if (env.verifyOwner) env.verifyOwner(String(req.key || ''), cleanCode(req.code), String(req.token || ''));
       cfg.notifyEmail = validEmail(email);
       cfg.ntfyTopic = topic;
       env.store.setConfig(cfg);
       return { config: cfg };
     });
+    if (!res.same) rememberSite(env, req.site, res.config, true);
+    return { config: res.config };
   };
 
   ACTIONS['admin.createLink'] = function (req, env) {
@@ -602,7 +624,9 @@ var BookingCore = (function () {
   ACTIONS['admin.setPasscode'] = function (req, env) {
     var next = String(req.newKey || '');
     if (next.length < MIN_PASSCODE) fail('weak', 'Use at least ' + MIN_PASSCODE + ' characters.');
-    return { token: env.setPasscode(next, String(req.token || ''), String(req.key || ''), cleanCode(req.code)) };
+    var token = env.setPasscode(next, String(req.token || ''), String(req.key || ''), cleanCode(req.code));
+    rememberSite(env, req.site, null, true);
+    return { token: token };
   };
 
   // The passcode is checked only here. A signed-in device keeps working with its
@@ -642,13 +666,14 @@ var BookingCore = (function () {
   ACTIONS['admin.twoStepConfirm'] = function (req, env) {
     needLive(env, 'twoStepConfirm');
     env.twoStepConfirm(cleanCode(req.code), String(req.token || ''), String(req.key || ''));
+    rememberSite(env, req.site, null, true);
     return { twoStep: true };
   };
   // Turning it off takes the passcode and a current code, so neither a stolen
   // sign-in nor the phone with the authenticator app is enough on its own.
   ACTIONS['admin.twoStepOff'] = function (req, env) {
     needLive(env, 'twoStepOff');
-    env.twoStepOff(cleanCode(req.code), String(req.token || ''), String(req.key || ''));
+    if (env.twoStepOff(cleanCode(req.code), String(req.token || ''), String(req.key || ''))) rememberSite(env, req.site, null, true);
     return { twoStep: false };
   };
 
@@ -837,12 +862,22 @@ function verifyFactors_(key, code, opts) {
   cache.put('authFails', String(fails + 1), 900);
   return secret ? 'wrong2' : 'wrong';
 }
-function failFactors_(result) {
+function failFactors_(result, lockedMsg) {
   if (result === 'ok') return;
   if (result === 'not_setup') BookingCore.fail('not_setup', NOT_SETUP_MSG_);
-  if (result === 'locked') BookingCore.fail('locked', LOCKED_MSG_);
+  if (result === 'locked') BookingCore.fail('locked', lockedMsg || LOCKED_MSG_);
   if (result === 'wrong2') BookingCore.fail('bad_key', 'That passcode or code is not right.');
   BookingCore.fail('bad_key', 'That passcode is not right.');
+}
+// For changes made from a signed-in device (passcode, alerts, two-step). If someone
+// keeps the pause going on purpose, the editor gets the owner past it.
+var CHANGE_LOCKED_MSG_ = 'Too many wrong passcodes, so this is paused for 15 minutes. If it keeps happening, ' +
+  'someone may be doing it on purpose: on a computer, open Apps Script, type a new passcode at the top of the code, ' +
+  'save, pick setup next to Run and press Run. That changes the passcode and signs out every device.';
+function verifyChange_(key, code) {
+  // A Scheduler from before these checks sends no passcode: say so, and don't count it as a wrong try.
+  if (!key) BookingCore.fail('outdated_app', 'This Scheduler is out of date. Close it and open it again, then try again.');
+  failFactors_(verifyFactors_(key, code), CHANGE_LOCKED_MSG_);
 }
 function pausedFast_() { return +(CacheService.getScriptCache().get('authFails') || 0) >= 10; }
 function rescueValid_(rescue) {
@@ -902,7 +937,7 @@ function gasEnv_() {
         if (props.getProperty('TOTP_SECRET')) BookingCore.fail('two_step_on', 'Two-step sign-in is already on.');
         var pending = props.getProperty('TOTP_PENDING');
         if (!pending) BookingCore.fail('two_step_expired', 'Start again: tap Turn on.');
-        failFactors_(verifyFactors_(key, ''));
+        verifyChange_(key, '');
         var step = totpMatch_(pending, code, -1);
         if (step < 0) BookingCore.fail('bad_code', 'That code doesn\u2019t match. Type the newest code the app shows.');
         props.setProperty('TOTP_SECRET', pending);
@@ -915,19 +950,21 @@ function gasEnv_() {
     },
     // Needs the passcode and a current code. When it's already off this does
     // nothing, so it can't be used to lift a pause or to test passcodes.
+    // Returns true once it has turned it off.
     twoStepOff: function (code, token, key) {
-      withLock_(function () {
+      return withLock_(function () {
         if (token && !tokenValid_(token)) BookingCore.fail('signed_out', 'Please enter your passcode again.');
         var props = props_();
-        if (!props.getProperty('TOTP_SECRET')) return;
-        failFactors_(verifyFactors_(key, code));
+        if (!props.getProperty('TOTP_SECRET')) return false;
+        verifyChange_(key, code);
         ['TOTP_SECRET', 'TOTP_LAST', 'TOTP_PENDING'].forEach(function (k) { props.deleteProperty(k); });
+        return true;
       });
     },
     // For changes a stolen sign-in mustn't make. Called inside env.lock.
     verifyOwner: function (key, code, token) {
       if (token && !tokenValid_(token)) BookingCore.fail('signed_out', 'Please enter your passcode again.');
-      failFactors_(verifyFactors_(key, code));
+      verifyChange_(key, code);
     },
     checkToken: tokenValid_,
     revokeToken: function (token) {
@@ -938,7 +975,7 @@ function gasEnv_() {
     setPasscode: function (next, token, key, code) {
       return withLock_(function () {
         if (token && !tokenValid_(token)) BookingCore.fail('signed_out', 'Please enter your passcode again.');
-        failFactors_(verifyFactors_(key, code));
+        verifyChange_(key, code);
         props_().setProperty('ADMIN_PASSCODE', next);
         writeTokens_([]);
         return addToken_();
