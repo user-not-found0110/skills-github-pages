@@ -52,6 +52,18 @@
     });
   }
 
+  // A change was refused because this device's sign-in has ended (for example after
+  // too many wrong passcodes): lock, unless another tab has already signed in again.
+  function endedSignIn(err, token) {
+    if (err.code !== 'signed_out') return false;
+    var stored = readAuth();
+    if (stored && stored !== token) { S.token = stored; return false; }
+    S.token = '';
+    saveAuth('');
+    showLock(err.message);
+    return true;
+  }
+
   // The server answers 'bad_action' to requests it doesn't know: it's running older code.
   var OUTDATED = 'Your Google Apps Script is running older code. On a computer, open it, select all the code and ' +
     'paste in the new server code (scheduler/backend/Code.js), save, then Deploy \u2192 Manage deployments \u2192 ' +
@@ -1043,7 +1055,10 @@
       'so changing where they go needs your passcode.', 'Save').then(function (creds) {
       req.key = creds.key;
       req.code = creds.code;
-      return call('admin.setAlerts', req);
+      return call('admin.setAlerts', req).catch(function (err) {
+        endedSignIn(err, req.token); // the lock screen then shows why
+        throw err;
+      });
     }).then(function (res) {
       S.mutSeq++;
       ALERT_FIELDS.forEach(function (k) {
@@ -1182,7 +1197,8 @@
           if (a.length < Core.minPasscode) { toast('Use at least ' + Core.minPasscode + ' characters.'); return; }
           if (a !== b) { toast('Those don’t match.'); return; }
           busy(save, true);
-          call('admin.setPasscode', { token: S.token, key: cur.value, code: code, newKey: a, site: siteUrl() }).then(function (res) {
+          var used = S.token;
+          call('admin.setPasscode', { token: used, key: cur.value, code: code, newKey: a, site: siteUrl() }).then(function (res) {
             S.token = res.token;
             saveAuth(res.token);
             closeSheet();
@@ -1190,7 +1206,7 @@
           }, function (err) {
             busy(save, false);
             if (codeBox) codeBox.value = '';
-            toast(errText(err));
+            if (!endedSignIn(err, used)) toast(errText(err));
           });
         };
       }
@@ -1287,7 +1303,8 @@
             if (!pass.value) { toast('Type your passcode.'); return; }
             if (!/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
             busy(confirm, true);
-            call('admin.twoStepConfirm', { token: S.token, key: pass.value, code: code, site: siteUrl() }).then(function () {
+            var used = S.token;
+            call('admin.twoStepConfirm', { token: used, key: pass.value, code: code, site: siteUrl() }).then(function () {
               S.twoStep = true;
               renderTwoStep();
               closeSheet();
@@ -1295,7 +1312,7 @@
             }, function (err) {
               busy(confirm, false);
               codeBox.value = '';
-              toast(errText(err));
+              if (!endedSignIn(err, used)) toast(errText(err));
             });
           };
         }
@@ -1321,7 +1338,8 @@
           if (!pass.value) { toast('Type your passcode.'); return; }
           if (!/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
           busy(off, true);
-          call('admin.twoStepOff', { token: S.token, key: pass.value, code: code, site: siteUrl() }).then(function () {
+          var used = S.token;
+          call('admin.twoStepOff', { token: used, key: pass.value, code: code, site: siteUrl() }).then(function () {
             S.twoStep = false;
             renderTwoStep();
             closeSheet();
@@ -1329,7 +1347,7 @@
           }, function (err) {
             busy(off, false);
             codeBox.value = '';
-            toast(errText(err));
+            if (!endedSignIn(err, used)) toast(errText(err));
           });
         };
       }
