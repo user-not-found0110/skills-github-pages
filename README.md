@@ -40,7 +40,9 @@ Changes save automatically and apply to every link immediately, including links 
 - **No outside services see your visitors.** The pages load nothing from other sites (the font is served from this site) and never pass their own address to other sites.
 - **Your passcode is the one real key.** New passcodes need 10 or more characters. Pick ones that aren't a word, name, date, or phone number. If you sign in with a shorter one saved before this rule, the Scheduler suggests changing it.
 - **Ten wrong passcodes pause every sign-in for 15 minutes**, the right passcode included, so nobody can keep guessing at full speed. Devices already signed in keep working. A stranger can trigger the pause on purpose. If that blocks you on a new device, open Apps Script and run **setup** to lift it right away. With `'CHANGE-ME'` still in the code, running setup doesn't touch your passcode.
-- **Each device signs in once.** After that it keeps its own random sign-in key; the passcode itself isn't stored on the phone. **Settings → Lock this device** signs that device out. Changing the passcode signs out every other device.
+- **Each device signs in once every 90 days.** In between it keeps its own random sign-in key; the passcode itself isn't stored on the phone. **Settings → Lock this device** signs that device out. Changing the passcode signs out every other device.
+- **Two-step sign-in (recommended).** Turn it on in **Settings → Two-step sign-in**. After that, signing in on a new device needs your passcode *and* a 6-digit code from an authenticator app on your phone, such as Google Authenticator or Microsoft Authenticator. A wrong passcode and a wrong code get the same answer, so nobody learns which one was right, and each code works only once. Turning it on signs out every other device. Turning it off takes a current code.
+- **Lost the phone with your authenticator app?** On a computer, open Apps Script, pick **turnOffTwoStepSignIn** next to **Run**, and press **Run**. That turns two-step sign-in off and signs out every device. Sign in with your passcode, then turn it on again with your new phone.
 - **Private notes:** anything you put in (parentheses) in a link's customer name stays in the Scheduler, for example `Sarah Johnson (gate code 4411)` or `Sarah (cell (757) 555-0142)`. The customer only sees `Sarah Johnson`.
 
 ---
@@ -103,6 +105,7 @@ scheduler/
   manifest.json    Installable app manifest
   sw.js            Service worker (offline app shell, scoped to /scheduler/)
   icons/icon.svg   App icon
+  vendor/qrcode.js QR code generator for two-step setup (MIT, Kazuhiko Arase)
   backend/Code.js  Booking server — paste into Google Apps Script
 content/, follow-up/, lead-tracker/, pricing-agent/, splash-pace-tracker/, wash-window/
                    Forwarding stubs for the retired tools, plus a worker that uninstalls each one

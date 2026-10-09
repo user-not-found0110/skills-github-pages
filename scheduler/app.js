@@ -52,6 +52,7 @@
     cfgDirty: false,
     settingsDirty: false,
     filled: null,     // Settings form values as last filled in from the config
+    twoStep: false,   // two-step sign-in is on for this server
     saving: false,
     savePending: false,
     saveTimer: null
@@ -174,7 +175,8 @@
     $('sheet').hidden = false;
     if (mount) mount($('sheetBody'));
   }
-  function closeSheet() { $('sheet').hidden = true; }
+  // Emptied on close so nothing shown in a sheet (like a two-step setup key) stays in the page.
+  function closeSheet() { $('sheet').hidden = true; $('sheetBody').innerHTML = ''; }
   $('sheet').addEventListener('click', function (e) {
     if (e.target.closest('[data-close]')) closeSheet();
   });
@@ -222,6 +224,7 @@
     S.links = data.links || [];
     S.activity = data.activity || [];
     S.account = data.account || '';
+    S.twoStep = !!data.twoStep;
     if (!S.cfg || !S.cfgDirty) {
       S.cfg = data.config;
       S.base = clone(data.config);
@@ -289,6 +292,7 @@
     renderLinks();
     if (!S.settingsDirty) fillSettings();
     renderConnection();
+    renderTwoStep();
   }
 
   // ---------- Bookings ----------
@@ -1099,32 +1103,168 @@
     });
   });
 
+  // ---------- Two-step sign-in ----------
+  function renderTwoStep() {
+    var on = S.twoStep;
+    document.querySelector('.twostep').classList.toggle('on', on);
+    $('twoStepState').textContent = on
+      ? 'On. Signing in on a new device needs your passcode and a code from your authenticator app.'
+      : 'Off. Signing in only needs your passcode.';
+    $('twoStepBtn').textContent = on ? 'Turn off' : 'Turn on';
+  }
+
+  // The QR code library is only loaded when it's needed.
+  var qrLoad = null;
+  function loadQr() {
+    if (window.qrcode) return Promise.resolve(window.qrcode);
+    if (!qrLoad) {
+      qrLoad = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = 'vendor/qrcode.js';
+        s.onload = function () { if (window.qrcode) resolve(window.qrcode); else reject(new Error('QR')); };
+        s.onerror = function () { qrLoad = null; reject(new Error('QR')); };
+        document.head.appendChild(s);
+      });
+    }
+    return qrLoad;
+  }
+  function codeField(id) {
+    return '<input class="inp code-entry" id="' + id + '" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" ' +
+      'autocomplete="one-time-code" placeholder="000000" aria-label="6-digit code">';
+  }
+  function readCode(id) { return $(id).value.replace(/\s+/g, ''); }
+
+  $('twoStepBtn').addEventListener('click', function () {
+    if (S.twoStep) openTwoStepOff(); else startTwoStep();
+  });
+
+  function startTwoStep() {
+    var btn = $('twoStepBtn');
+    busy(btn, true);
+    Api.call('admin.twoStepStart', { token: S.token }).then(function (res) {
+      busy(btn, false);
+      openSheet(
+        '<h3>Turn on two-step sign-in</h3>' +
+        '<p>Signing in on a new device will need your passcode and a 6-digit code from an app on your phone.</p>' +
+        '<ol class="steps">' +
+        '<li>Install a free authenticator app, such as <strong>Google Authenticator</strong> or <strong>Microsoft Authenticator</strong>.</li>' +
+        '<li>In the app, add an account: scan this code, or on this phone tap <strong>Open in app</strong>, or type the setup key.</li>' +
+        '<li>Type the 6-digit code the app shows, then tap <strong>Turn on</strong>.</li>' +
+        '</ol>' +
+        '<div class="qr" id="tsQr" role="img" aria-label="QR code for your authenticator app"></div>' +
+        '<div class="link-box setup-key" id="tsKey">' + esc(res.secret.replace(/(.{4})/g, '$1 ').trim()) + '</div>' +
+        '<div class="sheet-actions two"><a class="btn btn-soft" id="tsOpen" href="' + esc(res.uri) + '">Open in app</a>' +
+        '<button class="btn btn-soft" id="tsCopy">' + icon('copy') + 'Copy key</button></div>' +
+        '<label class="lbl" for="tsCode">6-digit code from the app</label>' + codeField('tsCode') +
+        '<div class="sheet-actions two"><button class="btn btn-soft" data-close>Cancel</button>' +
+        '<button class="btn btn-primary" id="tsConfirm"><span class="btn-text">Turn on</span><span class="spinner"></span></button></div>' +
+        '<p class="hint">Keep that phone safe. If you lose it, open Apps Script on a computer, pick <strong>turnOffTwoStepSignIn</strong> next to Run, and press Run.</p>',
+        function () {
+          loadQr().then(function (qrcode) {
+            var qr = qrcode(0, 'M');
+            qr.addData(res.uri);
+            qr.make();
+            $('tsQr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+          }).catch(function () { $('tsQr').hidden = true; });
+          $('tsCopy').onclick = function () { copyText(res.secret).then(function () { toast('Setup key copied'); }); };
+          $('tsConfirm').onclick = function () {
+            var code = readCode('tsCode');
+            if (!/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
+            busy($('tsConfirm'), true);
+            Api.call('admin.twoStepConfirm', { token: S.token, code: code }).then(function () {
+              S.twoStep = true;
+              renderTwoStep();
+              closeSheet();
+              toast('Two-step sign-in is on. Other devices will need a code to sign in again.');
+            }, function (err) {
+              busy($('tsConfirm'), false);
+              $('tsCode').value = '';
+              toast(errText(err));
+            });
+          };
+        }
+      );
+    }, function (err) {
+      busy(btn, false);
+      toast(errText(err));
+    });
+  }
+
+  function openTwoStepOff() {
+    openSheet(
+      '<h3>Turn off two-step sign-in?</h3>' +
+      '<p>Signing in will only need your passcode again. Type the current code from your authenticator app to confirm.</p>' +
+      '<label class="lbl" for="tsOffCode">6-digit code from the app</label>' + codeField('tsOffCode') +
+      '<div class="sheet-actions two"><button class="btn btn-soft" data-close>Keep it on</button>' +
+      '<button class="btn btn-danger" id="tsOff"><span class="btn-text">Turn off</span><span class="spinner"></span></button></div>',
+      function () {
+        $('tsOff').onclick = function () {
+          var code = readCode('tsOffCode');
+          if (!/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
+          busy($('tsOff'), true);
+          Api.call('admin.twoStepOff', { token: S.token, code: code }).then(function () {
+            S.twoStep = false;
+            renderTwoStep();
+            closeSheet();
+            toast('Two-step sign-in is off.');
+          }, function (err) {
+            busy($('tsOff'), false);
+            $('tsOffCode').value = '';
+            toast(errText(err));
+          });
+        };
+      }
+    );
+  }
+
   // ---------- Lock ----------
+  var LOCK_TEXT = $('lockText').textContent;
   function showLock(message) {
     $('lock').hidden = false;
     $('lockErr').textContent = message || '';
     $('lockDemo').hidden = Api.configured;
+    $('lockCode').hidden = true;
+    $('lockCode').value = '';
+    $('lockText').textContent = LOCK_TEXT;
     setTimeout(function () { $('lockInput').focus(); }, 200);
   }
   $('lockForm').addEventListener('submit', function (e) {
     e.preventDefault();
     var key = $('lockInput').value;
     if (!key) return;
+    var codeBox = $('lockCode');
+    var code = codeBox.hidden ? '' : codeBox.value.replace(/\s+/g, '');
+    if (!codeBox.hidden && !/^\d{6}$/.test(code)) {
+      $('lockErr').textContent = 'Type the 6-digit code from your authenticator app.';
+      codeBox.focus();
+      return;
+    }
     var btn = $('lockBtn');
     busy(btn, true);
     $('lockErr').textContent = '';
-    Api.call('admin.login', { key: key, site: siteUrl() }).then(function (data) {
+    Api.call('admin.login', { key: key, code: code, site: siteUrl() }).then(function (data) {
       busy(btn, false);
       S.token = data.token;
       saveAuth(data.token);
       $('lock').hidden = true;
       $('lockInput').value = '';
+      codeBox.hidden = true;
+      codeBox.value = '';
       applyLoad(data);
       if (key.length < Core.minPasscode) {
         toast('Your passcode is short and easier to guess. Use ' + Core.minPasscode + '+ characters.', 'Change', openPassSheet);
       }
     }, function (err) {
       busy(btn, false);
+      // Two-step sign-in is on: ask for the code too. Both are checked together.
+      if (err.code === 'need_code') {
+        codeBox.hidden = false;
+        codeBox.value = '';
+        $('lockText').textContent = 'Two-step sign-in is on. Enter your passcode and the 6-digit code from your authenticator app.';
+        codeBox.focus();
+        return;
+      }
+      codeBox.value = '';
       $('lockErr').textContent = errText(err);
       var card = document.querySelector('.lock-card');
       card.classList.remove('shake');

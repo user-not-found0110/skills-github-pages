@@ -19,6 +19,10 @@
  *        Execute as: Me    Who has access: Anyone    -> Deploy.
  *   6. Copy the Web app URL into the Scheduler app (Settings -> Connection).
  *
+ * Two-step sign-in (optional) is turned on in the Scheduler's Settings. Lost the
+ * phone with your authenticator app? Pick "turnOffTwoStepSignIn" next to Run and
+ * press Run.
+ *
  * Updating to a newer version of this file: paste over the old code the same
  * way (step 2) and Save. You don't need to change the passcode or run setup
  * again. Then Deploy -> Manage deployments -> Edit (pencil) -> Version: New
@@ -74,6 +78,16 @@ function setup() {
 
   Logger.log('Setup complete. Bookings sheet: ' + ss.getUrl());
   Logger.log('Next: Deploy -> New deployment -> Web app (Execute as: Me, Who has access: Anyone).');
+}
+
+// Lost the phone with your authenticator app? Pick this next to Run and press Run.
+// It turns two-step sign-in off, signs out every device and lifts a wrong-passcode
+// pause. Then sign in with your passcode and turn two-step sign-in on again.
+function turnOffTwoStepSignIn() {
+  var props = props_();
+  ['TOTP_SECRET', 'TOTP_LAST', 'TOTP_PENDING', 'TOKENS'].forEach(function (k) { props.deleteProperty(k); });
+  CacheService.getScriptCache().remove('authFails');
+  Logger.log('Two-step sign-in is off and every device is signed out. Sign in with your passcode, then turn it on again in Settings.');
 }
 
 
@@ -434,7 +448,8 @@ var BookingCore = (function () {
       links: links,
       activity: env.store.listActivity(80),
       today: today,
-      account: env.account ? env.account() : ''
+      account: env.account ? env.account() : '',
+      twoStep: !!(env.twoStepOn && env.twoStepOn())
     };
   };
 
@@ -535,13 +550,42 @@ var BookingCore = (function () {
   };
 
   // The passcode is checked only here. A signed-in device keeps working with its
-  // token even while wrong-passcode attempts have new sign-ins locked out.
+  // token even while wrong-passcode attempts have new sign-ins locked out. With
+  // two-step sign-in on, the passcode and the 6-digit code are checked together,
+  // so a wrong answer never says which of the two was wrong.
   ACTIONS['admin.login'] = function (req, env) {
-    env.checkAdmin(String(req.key || ''));
+    var code = cleanCode(req.code);
+    if (!code && env.twoStepOn && env.twoStepOn()) {
+      fail('need_code', 'Enter the 6-digit code from your authenticator app.');
+    }
+    env.checkAdmin(String(req.key || ''), code);
     var token = env.issueToken();
     var data = ACTIONS['admin.load'](req, env);
     data.token = token;
     return data;
+  };
+
+  function cleanCode(v) { return String(v || '').replace(/\s+/g, ''); }
+  function needLive(env, fn) {
+    if (!env[fn]) fail('demo', 'Two-step sign-in works once the Scheduler is live.');
+  }
+
+  // Two-step sign-in: start hands this signed-in device a new secret to add to an
+  // authenticator app; confirm turns it on once a code from the app matches.
+  ACTIONS['admin.twoStepStart'] = function (req, env) {
+    needLive(env, 'twoStepStart');
+    return env.twoStepStart();
+  };
+  ACTIONS['admin.twoStepConfirm'] = function (req, env) {
+    needLive(env, 'twoStepConfirm');
+    env.twoStepConfirm(cleanCode(req.code), String(req.token || ''));
+    return { twoStep: true };
+  };
+  // Turning it off takes a current code, so a stolen sign-in alone can't do it.
+  ACTIONS['admin.twoStepOff'] = function (req, env) {
+    needLive(env, 'twoStepOff');
+    env.twoStepOff(cleanCode(req.code));
+    return { twoStep: false };
   };
 
   ACTIONS['admin.logout'] = function (req, env) {
@@ -559,7 +603,9 @@ var BookingCore = (function () {
           if (!env.checkToken(String(req.token || ''))) fail('signed_out', 'Please enter your passcode again.');
         } else {
           // Schedulers from before sign-in tokens send the passcode with every
-          // request. Same check and lockout as signing in.
+          // request. Same check and lockout as signing in. They can't send a
+          // code, so this way in is closed once two-step sign-in is on.
+          if (env.twoStepOn && env.twoStepOn()) fail('signed_out', 'Please reopen the Scheduler and sign in again.');
           env.checkAdmin(String(req.key || ''));
         }
       }
@@ -674,7 +720,11 @@ function tokenHash_(token) {
 function readTokens_() {
   try { return JSON.parse(props_().getProperty('TOKENS') || '[]'); } catch (e) { return []; }
 }
-function writeTokens_(list) { props_().setProperty('TOKENS', JSON.stringify(list.slice(-25))); }
+// A sign-in lasts 90 days; after that the device signs in again (with a code,
+// if two-step sign-in is on).
+var TOKEN_DAYS_ = 90;
+function tokenFresh_(t) { return Date.now() - Date.parse(t.at) < TOKEN_DAYS_ * 86400000; }
+function writeTokens_(list) { props_().setProperty('TOKENS', JSON.stringify(list.filter(tokenFresh_).slice(-25))); }
 function newToken_() { return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ''); }
 
 function gasEnv_() {
@@ -687,7 +737,7 @@ function gasEnv_() {
     // Ten wrong passcodes pause every sign-in for 15 minutes, the right passcode
     // included, so nobody can keep guessing at full speed. Devices already
     // signed in keep working. Running setup() in the editor lifts the pause.
-    checkAdmin: function (key) {
+    checkAdmin: function (key, code) {
       var stored = storedPasscode_();
       if (!stored) {
         BookingCore.fail('not_setup', 'Setup isn\u2019t finished. In Apps Script, set ADMIN_PASSCODE at the top of the code ' +
@@ -698,22 +748,71 @@ function gasEnv_() {
       if (+(cache.get('authFails') || 0) >= 10) BookingCore.fail('locked', locked);
       // Counted under the script lock so a burst of parallel guesses can't slip past the limit.
       var result = withLock_(function () {
+        var props = props_();
         var fails = +(cache.get('authFails') || 0);
         if (fails >= 10) return 'locked';
-        if (key === stored) {
+        var secret = props.getProperty('TOTP_SECRET');
+        var step = secret ? totpMatch_(secret, String(code || ''), totpLast_()) : 0;
+        if (key === stored && step >= 0) {
           if (fails) cache.remove('authFails');
+          if (secret) props.setProperty('TOTP_LAST', String(step)); // each code works once
           return 'ok';
         }
         cache.put('authFails', String(fails + 1), 900);
-        return 'wrong';
+        return secret ? 'wrong2' : 'wrong';
       });
       if (result === 'locked') BookingCore.fail('locked', locked);
+      if (result === 'wrong2') BookingCore.fail('bad_key', 'That passcode or code is not right.');
       if (result !== 'ok') BookingCore.fail('bad_key', 'That passcode is not right.');
+    },
+    twoStepOn: function () { return !!props_().getProperty('TOTP_SECRET'); },
+    twoStepStart: function () {
+      var props = props_();
+      if (props.getProperty('TOTP_SECRET')) {
+        BookingCore.fail('two_step_on', 'Two-step sign-in is already on. Turn it off first to move it to another app.');
+      }
+      var secret = base32Encode_(randomBytes_(20));
+      props.setProperty('TOTP_PENDING', secret);
+      var name = encodeURIComponent('Splash Scheduler');
+      return { secret: secret, uri: 'otpauth://totp/' + name + '?secret=' + secret + '&issuer=' + name + '&algorithm=SHA1&digits=6&period=30' };
+    },
+    twoStepConfirm: function (code, token) {
+      withLock_(function () {
+        var props = props_();
+        var pending = props.getProperty('TOTP_PENDING');
+        if (!pending) BookingCore.fail('two_step_expired', 'Start again: tap Turn on.');
+        var step = totpMatch_(pending, code, -1);
+        if (step < 0) BookingCore.fail('bad_code', 'That code doesn\u2019t match. Type the newest code the app shows.');
+        props.setProperty('TOTP_SECRET', pending);
+        props.setProperty('TOTP_LAST', String(step));
+        props.deleteProperty('TOTP_PENDING');
+        // Devices that signed in before this must sign in again with a code.
+        var h = token ? tokenHash_(token) : '';
+        writeTokens_(readTokens_().filter(function (t) { return t.h === h; }));
+      });
+    },
+    twoStepOff: function (code) {
+      var cache = CacheService.getScriptCache();
+      var result = withLock_(function () {
+        var props = props_();
+        var fails = +(cache.get('authFails') || 0);
+        if (fails >= 10) return 'locked';
+        var secret = props.getProperty('TOTP_SECRET');
+        if (secret && totpMatch_(secret, code, totpLast_()) < 0) {
+          cache.put('authFails', String(fails + 1), 900);
+          return 'wrong';
+        }
+        ['TOTP_SECRET', 'TOTP_LAST', 'TOTP_PENDING'].forEach(function (k) { props.deleteProperty(k); });
+        if (fails) cache.remove('authFails');
+        return 'ok';
+      });
+      if (result === 'locked') BookingCore.fail('locked', 'Too many wrong passcodes. Wait 15 minutes and try again.');
+      if (result === 'wrong') BookingCore.fail('bad_code', 'That code doesn\u2019t match. Type the newest code the app shows.');
     },
     checkToken: function (token) {
       if (!/^[0-9a-f]{64}$/.test(token)) return false;
       var h = tokenHash_(token);
-      return readTokens_().some(function (t) { return t.h === h; });
+      return readTokens_().some(function (t) { return t.h === h && tokenFresh_(t); });
     },
     issueToken: function () {
       var token = newToken_();
@@ -741,14 +840,75 @@ function gasEnv_() {
   };
 }
 
-function newId_() {
-  var hex = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+// Random bytes from Google's UUIDs (random version 4), skipping the two bytes in
+// each that carry fixed version/variant bits.
+function randomBytes_(n) {
   var bytes = [];
-  for (var i = 0; i < hex.length && bytes.length < 10; i += 2) {
-    if (i === 12 || i === 16 || i === 44 || i === 48) continue; // UUID version/variant bytes aren't random
-    bytes.push(parseInt(hex.substr(i, 2), 16));
+  while (bytes.length < n) {
+    var hex = Utilities.getUuid().replace(/-/g, '');
+    for (var i = 0; i < 32 && bytes.length < n; i += 2) {
+      if (i === 12 || i === 16) continue;
+      bytes.push(parseInt(hex.substr(i, 2), 16));
+    }
   }
-  return BookingCore.idFromBytes(bytes);
+  return bytes;
+}
+
+function newId_() { return BookingCore.idFromBytes(randomBytes_(10)); }
+
+// ---- Two-step sign-in codes (RFC 6238, the standard authenticator apps use) ----
+
+var B32_ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function base32Encode_(bytes) {
+  var out = '', bits = 0, value = 0;
+  bytes.forEach(function (b) {
+    value = (value << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      out += B32_[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  });
+  if (bits > 0) out += B32_[(value << (5 - bits)) & 31];
+  return out;
+}
+function base32Decode_(s) {
+  var bytes = [], bits = 0, value = 0;
+  String(s).replace(/[\s=]/g, '').toUpperCase().split('').forEach(function (ch) {
+    var v = B32_.indexOf(ch);
+    if (v < 0) return;
+    value = (value << 5) | v;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  });
+  return bytes;
+}
+function signedBytes_(bytes) { return bytes.map(function (b) { return b > 127 ? b - 256 : b; }); }
+function totpAt_(secret, step) {
+  var counter = [];
+  for (var i = 7, n = step; i >= 0; i--, n = Math.floor(n / 256)) counter[i] = n % 256;
+  var mac = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1,
+    signedBytes_(counter), signedBytes_(base32Decode_(secret)));
+  var off = mac[mac.length - 1] & 15;
+  var bin = ((mac[off] & 127) * 16777216) + ((mac[off + 1] & 255) << 16) + ((mac[off + 2] & 255) << 8) + (mac[off + 3] & 255);
+  return ('000000' + (bin % 1000000)).slice(-6);
+}
+function totpLast_() {
+  var v = props_().getProperty('TOTP_LAST');
+  return v === null || v === undefined || v === '' ? -1 : +v;
+}
+// The 30-second step a code belongs to (now, or one either side for a phone clock
+// that's a little off), or -1. Steps at or before `last` were already used.
+function totpMatch_(secret, code, last) {
+  if (!/^\d{6}$/.test(code)) return -1;
+  var now = Math.floor(Date.now() / 30000);
+  for (var s = now - 1; s <= now + 1; s++) {
+    if (s > last && totpAt_(secret, s) === code) return s;
+  }
+  return -1;
 }
 
 // ---- Google Sheet storage ----

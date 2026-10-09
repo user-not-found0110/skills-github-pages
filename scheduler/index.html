@@ -238,6 +238,13 @@
           </div>
         </div>
         <div id="liveOnly" hidden>
+          <div class="twostep">
+            <div class="twostep-text">
+              <strong>Two-step sign-in</strong>
+              <span id="twoStepState">Off. Signing in only needs your passcode.</span>
+            </div>
+            <button class="btn btn-soft" id="twoStepBtn">Turn on</button>
+          </div>
           <div class="panel-actions">
             <button class="btn btn-soft" id="passBtn">Change passcode</button>
             <button class="btn btn-soft" id="signOutBtn">Lock this device</button>
@@ -298,6 +305,7 @@
       <p id="lockText">Enter the passcode you set in your Google Apps Script.</p>
       <form id="lockForm">
         <input class="inp" id="lockInput" type="password" placeholder="Passcode" autocomplete="current-password" required>
+        <input class="inp lock-code" id="lockCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code" aria-label="6-digit code from your authenticator app" hidden>
         <div class="lock-err" id="lockErr"></div>
         <button class="btn btn-primary btn-block" id="lockBtn" type="submit"><span class="btn-text">Unlock</span><span class="spinner"></span></button>
       </form>
