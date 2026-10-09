@@ -90,6 +90,7 @@ var BookingCore = (function () {
   var ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
   var VERSION = 2;
   var MIN_PASSCODE = 10; // for new passcodes; one saved before this rule still works
+  var LINK_KEEP_DAYS = 30; // a customer link stops working this long after its service day
 
   var DEFAULTS = {
     businessName: 'Splash Pressure Washing',
@@ -243,9 +244,16 @@ var BookingCore = (function () {
     for (var i = 0; i < links.length; i++) if (links[i].id === id) return links[i];
     return null;
   }
-  function liveLink(links, id) {
+  // A link stops working 30 days after its service day, or 30 days after its
+  // window ends if no day is booked, so an old text can't show a name and date
+  // forever. The owner keeps the record.
+  function expired(link, today) {
+    var last = link.status === 'booked' && isDate(link.date) ? link.date : link.end;
+    return isDate(last) && addDays(last, LINK_KEEP_DAYS) < today;
+  }
+  function liveLink(links, id, today) {
     var link = findLink(links, id);
-    if (!link || link.archived) {
+    if (!link || link.archived || expired(link, today)) {
       fail('not_found', "This scheduling link isn't active anymore. Please reach out to us for a new one.");
     }
     return link;
@@ -325,14 +333,15 @@ var BookingCore = (function () {
 
   ACTIONS['link.get'] = function (req, env) {
     var links = env.store.listLinks();
-    var link = liveLink(links, req.id);
+    var today = env.today();
+    var link = liveLink(links, req.id, today);
     var cfg = loadConfig(env);
     if (!req.preview) {
       try {
         env.store.patchLink(link.id, { views: (+link.views || 0) + 1, lastViewed: env.now() });
       } catch (e) { /* a missed view count is fine */ }
     }
-    return publicLink(cfg, link, links, env.today());
+    return publicLink(cfg, link, links, today);
   };
 
   ACTIONS['link.book'] = function (req, env) {
@@ -342,7 +351,7 @@ var BookingCore = (function () {
     return env.lock(function () {
       var today = env.today(), now = env.now();
       var links = env.store.listLinks();
-      var link = liveLink(links, req.id);
+      var link = liveLink(links, req.id, today);
       var cfg = loadConfig(env);
       var wasBooked = link.status === 'booked';
       var prev = wasBooked ? link.date : '';
@@ -376,7 +385,7 @@ var BookingCore = (function () {
     return env.lock(function () {
       var today = env.today(), now = env.now();
       var links = env.store.listLinks();
-      var link = liveLink(links, req.id);
+      var link = liveLink(links, req.id, today);
       var cfg = loadConfig(env);
       if (link.status !== 'booked') return publicLink(cfg, link, links, today);
       if (link.date < today) fail('past', 'This service day has already passed.');
@@ -595,16 +604,11 @@ function doPost(e) {
   return respond_(req);
 }
 
-// GET works too (?q=<json>); handy for checking the deployment in a browser.
-function doGet(e) {
-  var q = e && e.parameter && e.parameter.q;
-  if (!q) {
-    return json_({ ok: true, service: 'Splash Booking', version: BookingCore.version,
-      ready: !!storedPasscode_(), time: new Date().toISOString() });
-  }
-  var req = {};
-  try { req = JSON.parse(q); } catch (err) { req = {}; }
-  return respond_(req);
+// Opening the web app URL in a browser shows only this status. Bookings are read
+// and changed through POST requests from the pages, never through a web address.
+function doGet() {
+  return json_({ ok: true, service: 'Splash Booking', version: BookingCore.version,
+    ready: !!storedPasscode_(), time: new Date().toISOString() });
 }
 
 function respond_(req) {
@@ -928,10 +932,12 @@ function sendEmail_(evt) {
   MailApp.sendEmail({ to: to, subject: msg.subject, body: text, htmlBody: html, name: cfg.businessName + ' Bookings' });
 }
 
+// ntfy.sh is a public server, so a push only says what happened: no names,
+// dates, phone numbers or addresses. Tapping it opens the Scheduler.
 function sendPush_(evt) {
-  var cfg = evt.cfg, l = evt.link || {};
+  var cfg = evt.cfg;
   var msg = BookingCore.describe(evt);
-  var body = msg.line + (l.phone ? '\n' + l.phone : '') + (l.address ? '\n' + l.address : '');
+  var body = evt.type === 'test' ? msg.line : 'Open your Scheduler to see the details.';
   var headers = { Title: msg.title, Tags: msg.tag, Priority: 'high' }; // header values must stay ASCII
   if (schedulerUrl_(cfg)) headers.Click = schedulerUrl_(cfg);
   var res = UrlFetchApp.fetch('https://ntfy.sh/' + encodeURIComponent(cfg.ntfyTopic), {

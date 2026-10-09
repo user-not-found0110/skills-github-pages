@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#050b18">
   <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
   <meta name="description" content="Splash Pressure Washing - send booking links, set available days, see bookings">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -13,9 +14,8 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
   <link rel="apple-touch-icon" href="icons/icon.svg">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="preload" href="../fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../fonts/inter.css">
   <link rel="stylesheet" href="style.css">
   <title>Splash Scheduler</title>
 </head>
@@ -208,7 +208,7 @@
             <li>In ntfy, tap <strong>+</strong>, type the exact topic name, and subscribe.</li>
             <li>Press <strong>Send test alert</strong> below.</li>
           </ol>
-          <p>Anyone who knows a topic name can read it, so keep the generated name private.</p>
+          <p>Alerts only say what happened (a new booking, a change, a cancellation), never a name, phone number, or address. Tap one to open the Scheduler. Anyone who knows a topic name can read its alerts, so keep the generated name private.</p>
         </details>
 
         <label class="toggle">

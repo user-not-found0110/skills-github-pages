@@ -8,7 +8,9 @@ const ASSETS = [
   './icons/icon.svg',
   './backend/Code.js',
   '../book/config.js',
-  '../book/api.js'
+  '../book/api.js',
+  '../fonts/inter.css',
+  '../fonts/inter-latin.woff2'
 ];
 
 self.addEventListener('install', event => {

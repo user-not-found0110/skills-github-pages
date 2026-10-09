@@ -33,9 +33,11 @@ Changes save automatically and apply to every link immediately, including links 
 
 ## Who can see what
 - **Your bookings** live in a Google Sheet in your own Google account. The booking server only hands the full list to the Scheduler after it checks your passcode.
-- **A customer's link** shows that one customer their own booking and nothing else. Anyone holding that link can see and change that one booking, so it's as private as the text you sent it in. Link IDs are 10 random characters and can't realistically be guessed.
+- **A customer's link** shows that one customer their own booking (name, day, and service) and nothing else; never their phone or address. Anyone holding that link can see and change that one booking, so it's as private as the text you sent it in. Link IDs are 10 random characters and can't realistically be guessed.
+- **Links expire.** A link stops working 30 days after its service day, or 30 days after its window ends if nothing was booked, so an old text can't show a name and date forever. You keep the record in the Scheduler and the sheet.
 - **The pages themselves are public files.** GitHub Pages on a free account can't password-protect a site, so anyone can load the Scheduler's screens. Without your passcode they get the lock screen and no data. No customer data is stored in this repo.
-- **The server address in `book/config.js` is public on purpose.** The booking page needs it. It does nothing without your passcode or a customer's link.
+- **The server address in `book/config.js` is public on purpose.** The booking page needs it. It does nothing without your passcode or a customer's link, and opening it in a browser only shows a status line.
+- **No outside services see your visitors.** The pages load nothing from other sites (the font is served from this site) and never pass their own address to other sites.
 - **Your passcode is the one real key.** New passcodes need 10 or more characters. Pick ones that aren't a word, name, date, or phone number. If you sign in with a shorter one saved before this rule, the Scheduler suggests changing it.
 - **Ten wrong passcodes pause every sign-in for 15 minutes**, the right passcode included, so nobody can keep guessing at full speed. Devices already signed in keep working. A stranger can trigger the pause on purpose. If that blocks you on a new device, open Apps Script and run **setup** to lift it right away. With `'CHANGE-ME'` still in the code, running setup doesn't touch your passcode.
 - **Each device signs in once.** After that it keeps its own random sign-in key; the passcode itself isn't stored on the phone. **Settings → Lock this device** signs that device out. Changing the passcode signs out every other device.
@@ -67,7 +69,7 @@ Update the server code first and merge the pull request after. The new server co
 
 ## Alerts — read this
 - **Email** goes to the address in Settings, or to your Google account if that's blank. Gmail may not ring your phone for a message your own account sends to itself, so either use a different address (like a business email) or turn on push.
-- **Phone push** uses the free [ntfy](https://ntfy.sh) app: tap **Generate** in Settings, save, subscribe to that topic in the ntfy app, then **Send test alert**. Push alerts pass through ntfy.sh's public server and include the customer's name, phone, and address. Anyone who knows the topic name can read them, so use the generated name (it's random and unguessable), never one you make up, and keep it private.
+- **Phone push** uses the free [ntfy](https://ntfy.sh) app: tap **Generate** in Settings, save, subscribe to that topic in the ntfy app, then **Send test alert**. Because alerts pass through ntfy.sh's public server, they only say what happened (a new booking, a change, a cancellation), never a name, phone number, or address. Tap one to open the Scheduler and see who. Anyone who knows the topic name can read the alerts, so use the generated name (it's random and unguessable), never one you make up, and keep it private.
 - **Google Calendar:** bookings become all-day events and move or disappear when the customer changes or cancels. You can turn this off in Settings.
 
 ## Things to know
@@ -86,6 +88,7 @@ Open `/scheduler/` in Chrome → menu (three dots) → **Add to Home screen** �
 index.html         Forwards to splashwashing.com (and clears the retired tools' data)
 cleanup.js         Deletes what the retired tools saved on a device
 sw.js              Uninstalls the retired Quote Builder's background worker
+fonts/             Inter font (SIL Open Font License, see OFL.txt), served from this site
 book/
   index.html       Customer booking page
   app.js           Calendar, details form, change/cancel, add-to-calendar
