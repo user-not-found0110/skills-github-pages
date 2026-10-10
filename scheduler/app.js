@@ -64,6 +64,20 @@
     return true;
   }
 
+  // Message for a refused change (passcode, alerts, two-step). `hadCode`: the sheet sent a code.
+  function changeErrText(err, hadCode) {
+    if (err.code === 'bad_key' && /or code/.test(err.message)) {
+      if (!hadCode) {
+        // Two-step sign-in was turned on after this page loaded: the next try asks for a code.
+        S.twoStep = true;
+        renderTwoStep();
+        return 'Two-step sign-in is on. Try again, and type a code from your authenticator app too.';
+      }
+      return err.message + ' Each code works only once: if you just used this one, wait for the next.';
+    }
+    return errText(err);
+  }
+
   // The server answers 'bad_action' to requests it doesn't know: it's running older code.
   var OUTDATED = 'Your Google Apps Script is running older code. On a computer, open it, select all the code and ' +
     'paste in the new server code (scheduler/backend/Code.js), save, then Deploy \u2192 Manage deployments \u2192 ' +
@@ -184,7 +198,8 @@
     b.onclick = function () { $('toast').classList.remove('show'); if (onAction) onAction(); };
     $('toast').classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { $('toast').classList.remove('show'); }, actionLabel ? 5500 : 3200);
+    toastTimer = setTimeout(function () { $('toast').classList.remove('show'); },
+      Math.max(actionLabel ? 5500 : 3200, String(msg).length * 60)); // long messages stay up long enough to read
   }
   function busy(btn, on) { btn.classList.toggle('busy', on); btn.disabled = on; }
   function copyText(text) {
@@ -214,9 +229,24 @@
     $('sheetBody').innerHTML = html;
     $('sheet').hidden = false;
     if (mount) mount($('sheetBody'));
+    armSheetIdle();
   }
   // Emptied on close so nothing shown in a sheet (like a two-step setup key) stays in the page.
-  function closeSheet() { $('sheet').hidden = true; $('sheetBody').innerHTML = ''; }
+  function closeSheet() { clearTimeout(sheetIdle); $('sheet').hidden = true; $('sheetBody').innerHTML = ''; }
+  // A sheet left open with a passcode typed in closes itself after 3 quiet minutes,
+  // so the passcode isn't left on screen for whoever picks up the phone next.
+  var sheetIdle = null;
+  function armSheetIdle() {
+    clearTimeout(sheetIdle);
+    if ($('sheet').hidden || !$('sheetBody').querySelector('input[type=password]')) return;
+    sheetIdle = setTimeout(function () {
+      var filled = [].some.call($('sheetBody').querySelectorAll('input[type=password]'), function (i) { return i.value; });
+      if (!filled || $('sheet').hidden) return;
+      closeSheet();
+      toast('Closed after a few quiet minutes, so your passcode isn\u2019t left on screen.');
+    }, 180000);
+  }
+  ['input', 'keydown', 'pointerdown'].forEach(function (t) { $('sheetBody').addEventListener(t, armSheetIdle); });
   $('sheet').addEventListener('click', function (e) {
     if (e.target.closest('[data-close]')) closeSheet();
   });
@@ -295,6 +325,11 @@
     }).catch(function (err) {
       S.refreshing = null;
       $('refreshBtn').classList.remove('spin');
+      if (err.code === 'signed_out' && S.authChange) {
+        // This device is changing the passcode, which ends every old sign-in: wait for its new one.
+        var retry = function () { return refresh(opts); };
+        return S.authChange.then(retry, retry);
+      }
       if (err.code === 'signed_out') {
         // Only sign out if the token that failed is still the current one. A
         // passcode change here, or a sign-in in another tab, replaces it mid-load.
@@ -331,7 +366,7 @@
     renderAvailability();
     renderRangeChips();
     renderLinks();
-    if (!S.settingsDirty) fillSettings();
+    syncSettingsForm();
     renderConnection();
     renderTwoStep();
   }
@@ -610,7 +645,7 @@
       $('topSub').textContent = S.cfg.businessName;
       renderAvailability();
       renderRangePreview();
-      if (!S.settingsDirty) fillSettings();
+      syncSettingsForm();
       return res;
     }, function (err) {
       S.saving = false;
@@ -968,6 +1003,13 @@
     });
     return out;
   }
+  var FIELD_KEY = {};
+  Object.keys(SETTINGS_FIELDS).forEach(function (k) { FIELD_KEY[SETTINGS_FIELDS[k]] = k; });
+  var typed = {}; // settings the owner has changed on the form since it was last filled
+  function setField(k, v) {
+    var el = $(SETTINGS_FIELDS[k]);
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
+  }
   function fillSettings() {
     var c = S.cfg;
     $('sBiz').value = c.businessName;
@@ -979,16 +1021,38 @@
     $('sNtfy').value = c.ntfyTopic;
     $('sCal').checked = c.addToCalendar;
     S.filled = readForm();
+    typed = {};
+  }
+  // Fills the form from the server but puts back what the owner typed (`edits`),
+  // which then still counts as unsaved.
+  function refillSettings(edits) {
+    fillSettings();
+    Object.keys(edits).forEach(function (k) { setField(k, edits[k]); typed[k] = true; });
+    S.settingsDirty = Object.keys(edits).length > 0;
+  }
+  function typedValues() {
+    var now = readForm(), out = {};
+    Object.keys(typed).forEach(function (k) { out[k] = now[k]; });
+    return out;
+  }
+  // After a load or save. A form never filled yet (the owner typed while the first
+  // load was still on its way) is filled now, keeping what they typed; otherwise
+  // unsaved edits are left alone.
+  function syncSettingsForm() {
+    if (!S.settingsDirty) fillSettings();
+    else if (!S.filled) refillSettings(typedValues());
   }
   ['sBiz', 'sTag', 'sPhone', 'sOwner', 'sEmail', 'sNtfy', 'sCal'].forEach(function (id) {
-    $(id).addEventListener('input', function () { S.settingsDirty = true; });
-    $(id).addEventListener('change', function () { S.settingsDirty = true; });
+    var mark = function () { typed[FIELD_KEY[id]] = true; S.settingsDirty = true; };
+    $(id).addEventListener('input', mark);
+    $(id).addEventListener('change', mark);
   });
   $('genTopic').addEventListener('click', function () {
     var bytes = new Uint8Array(12);
     crypto.getRandomValues(bytes);
     var abc = 'abcdefghijkmnpqrstuvwxyz23456789';
     $('sNtfy').value = 'splash-' + Array.prototype.map.call(bytes, function (b) { return abc[b % abc.length]; }).join('');
+    typed.ntfyTopic = true;
     S.settingsDirty = true;
   });
 
@@ -1047,17 +1111,19 @@
       if (locked()) reject(new Error(title + ': not changed.'));
     });
   }
-  function saveAlerts() {
-    var now = readForm(), was = S.filled || {};
-    var req = { token: S.token, site: siteUrl() };
-    ALERT_FIELDS.forEach(function (k) { if (now[k] !== was[k]) req[k] = now[k]; });
+  // `snap`: the form as it was when Save was tapped.
+  function saveAlerts(snap) {
+    var was = S.filled || {}, req = { site: siteUrl() }, hadCode = false;
+    ALERT_FIELDS.forEach(function (k) { if (snap[k] !== was[k]) req[k] = snap[k]; });
     return askOwner('Where alerts go', 'Booking alerts include customer names, phone numbers and addresses, ' +
       'so changing where they go needs your passcode.', 'Save').then(function (creds) {
+      req.token = S.token; // as of now: a passcode change in another tab may have replaced it
       req.key = creds.key;
       req.code = creds.code;
+      hadCode = !!creds.code;
       return call('admin.setAlerts', req).catch(function (err) {
         endedSignIn(err, req.token); // the lock screen then shows why
-        throw err;
+        throw new Error(changeErrText(err, hadCode));
       });
     }).then(function (res) {
       S.mutSeq++;
@@ -1066,33 +1132,45 @@
         S.base[k] = res.config[k];
       });
       return res;
-    }, function (err) {
-      throw new Error(errText(err));
     });
   }
 
+  // One settings save at a time: Save and Send test alert share it, so only one
+  // passcode sheet ever opens.
+  var settingsSave = null;
   function saveSettings() {
+    if (settingsSave) return settingsSave;
+    if (!S.cfg || !S.filled) return Promise.reject(new Error('Still loading. Try again in a moment.'));
     var email = $('sEmail').value.trim();
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Promise.reject(new Error('That email address doesn’t look right.'));
     var topic = $('sNtfy').value.trim();
     if (topic && !/^[A-Za-z0-9_-]{1,64}$/.test(topic)) return Promise.reject(new Error('Push topic: letters, numbers, - and _ only.'));
+    var snap = readForm();
     var alerts = alertsChanged();
     collectSettings();
     S.cfgDirty = true;
-    return saveConfig().then(function (res) {
+    var p = settingsSave = saveConfig().then(function (res) {
       if (!alerts) return res;
-      return saveAlerts();
+      return saveAlerts(snap);
     }).then(function (res) {
-      S.settingsDirty = false;
-      fillSettings();
+      // Anything typed while the save was on its way stays on the form, unsaved.
+      var now = readForm(), edits = {};
+      Object.keys(now).forEach(function (k) { if (now[k] !== snap[k]) edits[k] = now[k]; });
+      refillSettings(edits);
       return res;
     });
+    var done = function () { if (settingsSave === p) settingsSave = null; };
+    p.then(done, done);
+    return p;
+  }
+  function attempt(fn) {
+    try { return Promise.resolve(fn()); } catch (e) { return Promise.reject(e); }
   }
 
   $('saveSettingsBtn').addEventListener('click', function () {
     var btn = $('saveSettingsBtn');
     busy(btn, true);
-    saveSettings().then(function () {
+    attempt(saveSettings).then(function () {
       busy(btn, false);
       toast('Settings saved');
       renderLinks();
@@ -1109,7 +1187,7 @@
     }
     var btn = $('testAlertBtn');
     busy(btn, true);
-    var first = S.settingsDirty ? saveSettings() : Promise.resolve();
+    var first = S.settingsDirty ? attempt(saveSettings) : Promise.resolve();
     first.then(function () {
       return call('admin.testNotify', { token: S.token });
     }).then(function (res) {
@@ -1170,12 +1248,18 @@
     // Reload once the server has ended this sign-in, so nothing from the session
     // is left anywhere in the page. Other tabs lock themselves (see syncAuth).
     call('admin.logout', { token: token }).then(function () { location.reload(); }, function (err) {
-      if (err.code !== 'network') { location.reload(); return; } // e.g. that sign-in had already ended
-      $('lockErr').textContent = 'Locked on this device, but the server couldn\u2019t be reached to end the sign-in. ' +
-        'If someone could have copied it, change your passcode.';
+      if (err.code === 'signed_out') { location.reload(); return; } // that sign-in had already ended
+      $('lockErr').textContent = 'Locked on this device, but the server ' +
+        (err.code === 'network' ? 'couldn\u2019t be reached to end the sign-in' : 'couldn\u2019t end the sign-in') +
+        '. If someone could have copied it, change your passcode.';
     });
   });
-  $('passBtn').addEventListener('click', function () { openPassSheet(); });
+  function stillLoading() {
+    if (S.loaded) return false;
+    toast('Still loading. Try again in a moment.');
+    return true;
+  }
+  $('passBtn').addEventListener('click', function () { if (!stillLoading()) openPassSheet(); });
   function openPassSheet() {
     openSheet(
       '<h3>Change passcode</h3><p>Used to unlock the Scheduler on your devices. Use ' + Core.minPasscode +
@@ -1188,25 +1272,35 @@
       '<button class="btn btn-primary" id="pwSave"><span class="btn-text">Save</span><span class="spinner"></span></button></div>',
       function () {
         // Kept from now on: the sheet may be closed and emptied while a request runs.
-        var save = $('pwSave'), cur = $('pw0'), codeBox = $('pwCode');
+        var save = $('pwSave'), cur = $('pw0'), codeBox = $('pwCode'), n1 = $('pw1'), n2 = $('pw2');
+        // A failed try clears the passcodes, so none is left on screen for whoever picks up the phone.
+        var clear = function () {
+          [cur, n1, n2].forEach(function (i) { i.value = ''; });
+          if (codeBox) codeBox.value = '';
+        };
         save.onclick = function () {
-          var a = $('pw1').value, b = $('pw2').value;
+          var a = n1.value, b = n2.value;
           var code = codeBox ? codeBox.value.replace(/\s+/g, '') : '';
           if (!cur.value) { toast('Type your current passcode.'); return; }
           if (codeBox && !/^\d{6}$/.test(code)) { toast('Type the 6-digit code from the app.'); return; }
-          if (a.length < Core.minPasscode) { toast('Use at least ' + Core.minPasscode + ' characters.'); return; }
-          if (a !== b) { toast('Those don’t match.'); return; }
+          if (a.length < Core.minPasscode) { clear(); toast('Use at least ' + Core.minPasscode + ' characters. Type them all again.'); return; }
+          if (a !== b) { clear(); toast('Those don’t match. Type them all again.'); return; }
           busy(save, true);
           var used = S.token;
-          call('admin.setPasscode', { token: used, key: cur.value, code: code, newKey: a, site: siteUrl() }).then(function (res) {
+          var change = call('admin.setPasscode', { token: used, key: cur.value, code: code, newKey: a, site: siteUrl() });
+          // Until this answers, a refresh that finds the old sign-in ended waits for it (see refresh).
+          S.authChange = change;
+          var settle = function () { if (S.authChange === change) S.authChange = null; };
+          change.then(settle, settle);
+          change.then(function (res) {
             S.token = res.token;
             saveAuth(res.token);
             closeSheet();
             toast('Passcode changed. Other devices will need it to sign in again.');
           }, function (err) {
             busy(save, false);
-            if (codeBox) codeBox.value = '';
-            if (!endedSignIn(err, used)) toast(errText(err));
+            clear();
+            if (!endedSignIn(err, used)) toast(changeErrText(err, !!codeBox));
           });
         };
       }
@@ -1263,6 +1357,7 @@
   }
 
   $('twoStepBtn').addEventListener('click', function () {
+    if (stillLoading()) return;
     if (S.twoStep) openTwoStepOff(); else startTwoStep();
   });
 
@@ -1305,6 +1400,7 @@
             busy(confirm, true);
             var used = S.token;
             call('admin.twoStepConfirm', { token: used, key: pass.value, code: code, site: siteUrl() }).then(function () {
+              S.mutSeq++; // a load already on its way would still say two-step is off
               S.twoStep = true;
               renderTwoStep();
               closeSheet();
@@ -1312,7 +1408,8 @@
             }, function (err) {
               busy(confirm, false);
               codeBox.value = '';
-              if (!endedSignIn(err, used)) toast(errText(err));
+              pass.value = ''; // not left on screen for whoever picks up the phone
+              if (!endedSignIn(err, used)) toast(changeErrText(err, true));
             });
           };
         }
@@ -1340,6 +1437,7 @@
           busy(off, true);
           var used = S.token;
           call('admin.twoStepOff', { token: used, key: pass.value, code: code, site: siteUrl() }).then(function () {
+            S.mutSeq++;
             S.twoStep = false;
             renderTwoStep();
             closeSheet();
@@ -1347,7 +1445,8 @@
           }, function (err) {
             busy(off, false);
             codeBox.value = '';
-            if (!endedSignIn(err, used)) toast(errText(err));
+            pass.value = '';
+            if (!endedSignIn(err, used)) toast(changeErrText(err, true));
           });
         };
       }
@@ -1363,6 +1462,7 @@
     S.activity = [];
     S.loaded = false;
     S.settingsDirty = false;
+    typed = {};
     ['upcoming', 'past', 'activity', 'linkList'].forEach(function (id) { $(id).innerHTML = ''; });
     ['sEmail', 'sNtfy', 'sOwner', 'sPhone', 'lnCustomer', 'lnService'].forEach(function (id) { $(id).value = ''; });
     closeSheet();
@@ -1375,8 +1475,21 @@
   function showLock(message) {
     epoch++;
     if (inFlight) stale = true; // their replies will be dropped
+    // Work that was on its way belongs to the old session; its replies never arrive.
+    // Clear it, so a sign-in without a reload (site storage blocked) starts clean.
     clearTimeout(S.saveTimer);
+    S.saveTimer = null;
+    S.refreshing = null;
+    S.saving = false;
+    S.savePending = false;
+    S.savingPromise = null;
+    S.cfgDirty = false;
+    S.authChange = null;
+    settingsSave = null;
+    document.querySelectorAll('button.busy').forEach(function (b) { busy(b, false); });
     $('refreshBtn').classList.remove('spin');
+    clearTimeout(lockForget);
+    $('lockInput').value = '';
     wipeData();
     shellInert(true);
     $('toast').classList.remove('show');
@@ -1399,10 +1512,27 @@
     $('lockRescue').hidden = false;
     $('lockRescue').focus();
   });
+  // A passcode typed on the lock screen isn't kept after a failed sign-in, so nobody
+  // can tap Unlock later without knowing it. While a two-step code is awaited it's
+  // kept for 2 minutes, long enough to fetch the code from the authenticator app.
+  var lockForget = null;
+  function forgetLockEntry(message) {
+    clearTimeout(lockForget);
+    $('lockInput').value = '';
+    $('lockCode').value = '';
+    $('lockCode').hidden = true;
+    $('lockText').textContent = LOCK_TEXT;
+    if (message) $('lockErr').textContent = message;
+  }
   $('lockForm').addEventListener('submit', function (e) {
     e.preventDefault();
     var key = $('lockInput').value;
-    if (!key) return;
+    if (!key) {
+      $('lockErr').textContent = 'Type your passcode.';
+      $('lockInput').focus();
+      return;
+    }
+    clearTimeout(lockForget);
     var codeBox = $('lockCode'), rescueBox = $('lockRescue');
     var code = codeBox.hidden ? '' : codeBox.value.replace(/\s+/g, '');
     // An empty code is sent as is: the server asks for one only while two-step is on.
@@ -1442,9 +1572,14 @@
         codeBox.value = '';
         $('lockText').textContent = 'Two-step sign-in is on. Enter your passcode and the 6-digit code from your authenticator app.';
         codeBox.focus();
+        lockForget = setTimeout(function () {
+          forgetLockEntry('For safety, the passcode was cleared. Type it again with a new code.');
+        }, 120000);
         return;
       }
       codeBox.value = '';
+      $('lockInput').value = '';
+      $('lockInput').focus();
       if (err.code === 'bad_rescue') rescueBox.value = '';
       if (err.code === 'locked' && rescueBox.hidden) $('lockRescueBtn').hidden = false;
       $('lockErr').textContent = errText(err);
