@@ -2,10 +2,12 @@
 
 A Calendly-style day picker for [Splash Pressure Washing](https://splashwashing.com), a veteran and firefighter owned company in Chesapeake, VA. Customers pick a **day**, not a time slot.
 
-| Page | URL path | Who uses it |
+Live at **https://schedule.splashwashing.com** (see [Web address](#web-address)).
+
+| Page | Address | Who uses it |
 |---|---|---|
-| **Scheduler** | `/scheduler/` | You. Set the days you work, block days off, text a customer a booking link, and get alerted when they pick, change, or cancel a day. Locked with your passcode. |
-| **Booking page** | `/book/?l=…` | Your customer. They see only the days in the window you chose, pick one, and enter a name (phone and address optional). No account. |
+| **Scheduler** | `https://schedule.splashwashing.com/scheduler/` | You. Set the days you work, block days off, text a customer a booking link, and get alerted when they pick, change, or cancel a day. Locked with your passcode. |
+| **Booking page** | `https://schedule.splashwashing.com/book/?l=…` | Your customer. They see only the days in the window you chose, pick one, and enter a name (phone and address optional). No account. |
 
 ### Retired tools
 The older tools that used to live here (Quote Builder, Content Creator, Wash Window, Pace Gauge, Lead Tracker, Quote Follow-Up, Pricing Agent) have been removed. Their addresses now forward to [splashwashing.com](https://splashwashing.com).
@@ -83,14 +85,28 @@ The pull request says whether to merge it first or update the server code first,
 
 ## Things to know
 - **Customers aren't notified when *you* cancel.** They don't leave an email. Cancelling from the Scheduler offers a pre-written text to send them, and they'll also see the cancellation if they reopen their link.
-- **The default link address looks like `…github.io/skills-github-pages/book/?l=…`.** For a more professional link, point a subdomain such as `book.splashwashing.com` at GitHub Pages using a custom domain. It's a DNS change and nothing in the pages needs to change.
 - **Google's script server isn't instant.** Expect a brief loading shimmer when the page opens and a second or two after **Confirm**.
 - **Quotas:** a free Google account can send email to 100 recipients a day through Apps Script. That's far above what booking alerts need.
 - **Spam guard:** a single link allows 8 customer changes per hour.
 - Your bookings live in the Google Sheet (**Links** and **Activity** tabs), so you can view, sort, or export them there anytime.
 
 ## Install on your phone
-Open `/scheduler/` in Chrome → menu (three dots) → **Add to Home screen** → **Install**. It gets its own icon and opens like an app.
+Open **https://schedule.splashwashing.com/scheduler/** in Chrome → menu (three dots) → **Add to Home screen** → **Install**. It gets its own icon and opens like an app.
+
+## Web address
+The site is served by GitHub Pages at **schedule.splashwashing.com**, a subdomain of the domain your website uses. Your website itself is hosted by Manus; the domain's DNS is managed at SiteGround. GitHub normally forwards the old `user-not-found0110.github.io/skills-github-pages/…` address to the new one; if a link sent before the switch doesn't open, send that customer a new link.
+
+What keeps it working (don't remove any of these while the Scheduler is in use):
+- **SiteGround → Site Tools → Domain → DNS Zone Editor:**
+  - a **CNAME** record `schedule` → `user-not-found0110.github.io`
+  - a **TXT** record `_github-pages-challenge-user-not-found0110` with GitHub's verification code. It proves the domain is yours, so nobody else can publish a GitHub Pages site on it.
+- **This repository:** the `CNAME` file (it holds `schedule.splashwashing.com`), and **Settings → Pages → Custom domain** with **Enforce HTTPS** ticked.
+
+Leave the domain's main **A record** as it is: it points `splashwashing.com` at your Manus website. SiteGround's "Your domain's A record is not pointed to this website" notice is expected for that reason.
+
+If you ever stop using the Scheduler, remove the `schedule` CNAME record at SiteGround as well, so the address doesn't point at GitHub with nothing behind it.
+
+Each device signs in separately at a new web address. If the address ever changes again, sign in once more on each device and re-add the home-screen icon.
 
 ## Files
 ```
